@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - AEPi House Points</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 30px; font-size: 2em; }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .nav a {
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .nav a:hover, .nav a.active { background: rgba(255,255,255,0.2); }
+    .card {
+      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      margin-bottom: 15px;
+    }
+    .request-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+    .member-name { font-size: 1.3em; font-weight: 600; }
+    .category { color: #4ade80; font-size: 0.9em; margin-top: 5px; }
+    .points-badge {
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #000;
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .explanation {
+      background: rgba(0,0,0,0.2);
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-style: italic;
+      color: rgba(255,255,255,0.8);
+    }
+    .timestamp { color: rgba(255,255,255,0.5); font-size: 0.85em; margin-bottom: 15px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-approve { background: #4ade80; color: #000; }
+    .btn-deny { background: #ef4444; color: #fff; }
+    .btn-custom { background: #f59e0b; color: #000; }
+    .custom-points {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      width: 100%;
+    }
+    .custom-points.show { display: flex; }
+    .custom-points input {
+      width: 80px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    .custom-points input::placeholder { color: rgba(255,255,255,0.5); }
+    .empty-state {
+      text-align: center;
+      padding: 50px 20px;
+      color: rgba(255,255,255,0.6);
+    }
+    .empty-state h2 { margin-bottom: 10px; }
+    .badge-pending { background: rgba(251,191,36,0.2); color: #fbbf24; padding: 3px 10px; border-radius: 10px; font-size: 0.8em; }
+    .login-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .login-overlay.hidden { display: none; }
+    .login-box {
+      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 30px;
+      backdrop-filter: blur(10px);
+      width: 100%;
+      max-width: 350px;
+      text-align: center;
+    }
+    .login-box h2 { margin-bottom: 20px; }
+    .login-box input {
+      width: 100%;
+      padding: 12px 15px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+    .login-box input::placeholder { color: rgba(255,255,255,0.5); }
+    .login-box button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #000;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .login-error { color: #ef4444; margin-top: 10px; display: none; }
+    .login-error.show { display: block; }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tab {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .tab:hover { background: rgba(255,255,255,0.15); }
+    .tab.active { background: rgba(255,255,255,0.25); }
+    .tab-count {
+      background: rgba(255,255,255,0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.85em;
+      margin-left: 8px;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+    .edit-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .edit-row input {
+      width: 80px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    .btn-edit { background: #3b82f6; color: #fff; }
+    .btn-small { padding: 8px 15px; font-size: 13px; }
+    h2.section-title { margin-bottom: 15px; font-size: 1.2em; color: rgba(255,255,255,0.8); }
+  </style>
+</head>
+<body>
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-box">
+      <h2>Admin Login</h2>
+      <input type="password" id="password" placeholder="Enter password" onkeypress="if(event.key==='Enter')checkPassword()">
+      <button onclick="checkPassword()">Login</button>
+      <div class="login-error" id="loginError">Wrong password</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Admin Panel</h1>
+    <nav class="nav">
+      <a href="/">Submit</a>
+      <a href="/admin.html" class="active">Admin</a>
+      <a href="/lookup.html">Lookup</a>
+    </nav>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('pending')" id="tab-pending">Pending <span class="tab-count" id="pending-count">0</span></button>
+      <button class="tab" onclick="showTab('approved')" id="tab-approved">Approved <span class="tab-count" id="approved-count">0</span></button>
+    </div>
+
+    <div id="pending-section" class="section active">
+      <div id="requests"></div>
+    </div>
+
+    <div id="approved-section" class="section">
+      <div id="approved-requests"></div>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_PASSWORD = 'touse123';
+
+    // Check if already logged in
+    if (sessionStorage.getItem('adminAuth') === 'true') {
+      document.getElementById('loginOverlay').classList.add('hidden');
+    }
+
+    function checkPassword() {
+      const input = document.getElementById('password').value;
+      if (input === ADMIN_PASSWORD) {
+        sessionStorage.setItem('adminAuth', 'true');
+        document.getElementById('loginOverlay').classList.add('hidden');
+      } else {
+        document.getElementById('loginError').classList.add('show');
+      }
+    }
+
+    async function loadRequests() {
+      const res = await fetch('/api/requests/pending');
+      const requests = await res.json();
+      const container = document.getElementById('requests');
+      document.getElementById('pending-count').textContent = requests.length;
+
+      if (requests.length === 0) {
+        container.innerHTML = `
+          <div class="card empty-state">
+            <h2>No pending requests</h2>
+            <p>All caught up! Check back later.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = requests.map(r => `
+        <div class="card" id="request-${r.id}">
+          <div class="request-header">
+            <div>
+              <div class="member-name">${escapeHtml(r.member_name)}</div>
+              <div class="category">${r.category_name ? escapeHtml(r.category_name) : escapeHtml(r.custom_category || 'Other')}</div>
+            </div>
+            <div class="points-badge">${r.requested_points} pts</div>
+          </div>
+          ${r.explanation ? `<div class="explanation">"${escapeHtml(r.explanation)}"</div>` : ''}
+          <div class="timestamp">${new Date(r.created_at).toLocaleString()}</div>
+          <div class="actions">
+            <button class="btn btn-approve" onclick="approve(${r.id}, ${r.requested_points})">Approve</button>
+            <button class="btn btn-deny" onclick="deny(${r.id})">Deny</button>
+            <button class="btn btn-custom" onclick="toggleCustom(${r.id})">Different Points</button>
+          </div>
+          <div class="custom-points" id="custom-${r.id}">
+            <input type="number" id="points-${r.id}" min="1" max="20" value="${r.requested_points}" placeholder="Points">
+            <button class="btn btn-approve" onclick="approveCustom(${r.id})">Approve with Custom</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function toggleCustom(id) {
+      document.getElementById(`custom-${id}`).classList.toggle('show');
+    }
+
+    async function approve(id, points) {
+      await updateRequest(id, 'approved', points);
+    }
+
+    async function approveCustom(id) {
+      const points = parseInt(document.getElementById(`points-${id}`).value);
+      await updateRequest(id, 'approved', points);
+    }
+
+    async function deny(id) {
+      await updateRequest(id, 'denied', null);
+    }
+
+    async function updateRequest(id, status, points) {
+      await fetch(`/api/requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, approved_points: points })
+      });
+      loadRequests();
+      loadApproved();
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById(`tab-${tab}`).classList.add('active');
+      document.getElementById(`${tab}-section`).classList.add('active');
+    }
+
+    async function loadApproved() {
+      const res = await fetch('/api/requests/approved');
+      const requests = await res.json();
+      const container = document.getElementById('approved-requests');
+      document.getElementById('approved-count').textContent = requests.length;
+
+      if (requests.length === 0) {
+        container.innerHTML = `
+          <div class="card empty-state">
+            <h2>No approved requests</h2>
+            <p>Approved requests will appear here.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = requests.map(r => `
+        <div class="card" id="approved-${r.id}">
+          <div class="request-header">
+            <div>
+              <div class="member-name">${escapeHtml(r.member_name)}</div>
+              <div class="category">${r.category_name ? escapeHtml(r.category_name) : escapeHtml(r.custom_category || 'Other')}</div>
+            </div>
+            <div class="points-badge">${r.approved_points} pts</div>
+          </div>
+          ${r.explanation ? `<div class="explanation">"${escapeHtml(r.explanation)}"</div>` : ''}
+          <div class="timestamp">Approved: ${new Date(r.resolved_at).toLocaleString()}</div>
+          <div class="edit-row">
+            <input type="number" id="edit-points-${r.id}" min="1" max="20" value="${r.approved_points}" placeholder="Points">
+            <button class="btn btn-edit btn-small" onclick="editPoints(${r.id})">Update Points</button>
+            <button class="btn btn-deny btn-small" onclick="revokeApproval(${r.id})">Revoke</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function editPoints(id) {
+      const points = parseInt(document.getElementById(`edit-points-${id}`).value);
+      await fetch(`/api/requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'approved', approved_points: points })
+      });
+      loadApproved();
+    }
+
+    async function revokeApproval(id) {
+      if (confirm('Revoke this approval? The request will be denied.')) {
+        await fetch(`/api/requests/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'denied', approved_points: null })
+        });
+        loadApproved();
+      }
+    }
+
+    loadRequests();
+    loadApproved();
+  </script>
+</body>
+</html>

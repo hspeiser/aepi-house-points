@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEPi House Points</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container { max-width: 500px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 30px; font-size: 2em; }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .nav a {
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .nav a:hover, .nav a.active { background: rgba(255,255,255,0.2); }
+    .card {
+      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+    }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; margin-bottom: 8px; font-weight: 500; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 16px;
+    }
+    input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.5); }
+    select option { background: #1a1a2e; color: #fff; }
+    .points-display {
+      text-align: center;
+      font-size: 2.5em;
+      font-weight: bold;
+      margin: 15px 0;
+      color: #4ade80;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #000;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(74,222,128,0.4); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .message {
+      text-align: center;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 20px;
+      display: none;
+    }
+    .message.success { display: block; background: rgba(74,222,128,0.2); color: #4ade80; }
+    .message.error { display: block; background: rgba(239,68,68,0.2); color: #ef4444; }
+    .other-fields { display: none; }
+    .other-fields.show { display: block; }
+    #datalist-container { position: relative; }
+    .suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1a1a2e;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      display: none;
+      z-index: 10;
+    }
+    .suggestions.show { display: block; }
+    .suggestion-item {
+      padding: 12px 15px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .suggestion-item:hover { background: rgba(255,255,255,0.1); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AEPi House Points</h1>
+    <nav class="nav">
+      <a href="/" class="active">Submit</a>
+      <a href="/admin.html">Admin</a>
+      <a href="/lookup.html">Lookup</a>
+    </nav>
+
+    <div class="card">
+      <form id="pointsForm">
+        <div class="form-group">
+          <label for="name">Your Name</label>
+          <div id="datalist-container">
+            <input type="text" id="name" placeholder="Start typing your name..." autocomplete="off" required>
+            <div class="suggestions" id="suggestions"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="category">What did you do?</label>
+          <select id="category" required>
+            <option value="">Select activity...</option>
+          </select>
+        </div>
+
+        <div class="other-fields" id="otherFields">
+          <div class="form-group">
+            <label for="customCategory">Describe the activity</label>
+            <input type="text" id="customCategory" placeholder="What did you do?">
+          </div>
+          <div class="form-group">
+            <label for="customPoints">Requested Points</label>
+            <input type="number" id="customPoints" min="1" max="20" value="1">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="explanation">Notes (optional)</label>
+          <textarea id="explanation" rows="2" placeholder="Any additional details..."></textarea>
+        </div>
+
+        <div class="points-display" id="pointsDisplay">0 pts</div>
+
+        <button type="submit">Request Points</button>
+      </form>
+
+      <div class="message" id="message"></div>
+    </div>
+  </div>
+
+  <script>
+    let categories = [];
+    let selectedMemberId = null;
+
+    // Load categories
+    fetch('/api/categories')
+      .then(r => r.json())
+      .then(data => {
+        categories = data;
+        const select = document.getElementById('category');
+        data.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat.id;
+          opt.textContent = `${cat.name} (${cat.default_points} pts)`;
+          opt.dataset.points = cat.default_points;
+          select.appendChild(opt);
+        });
+        const otherOpt = document.createElement('option');
+        otherOpt.value = 'other';
+        otherOpt.textContent = 'Other (custom)';
+        select.appendChild(otherOpt);
+      });
+
+    // Name autocomplete
+    const nameInput = document.getElementById('name');
+    const suggestions = document.getElementById('suggestions');
+
+    nameInput.addEventListener('input', async () => {
+      const val = nameInput.value.trim();
+      selectedMemberId = null;
+      if (val.length < 1) {
+        suggestions.classList.remove('show');
+        return;
+      }
+      const res = await fetch(`/api/members?search=${encodeURIComponent(val)}`);
+      const members = await res.json();
+      suggestions.innerHTML = '';
+      if (members.length > 0) {
+        members.forEach(m => {
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          div.textContent = m.name;
+          div.onclick = () => {
+            nameInput.value = m.name;
+            selectedMemberId = m.id;
+            suggestions.classList.remove('show');
+          };
+          suggestions.appendChild(div);
+        });
+        suggestions.classList.add('show');
+      } else {
+        suggestions.classList.remove('show');
+      }
+    });
+
+    nameInput.addEventListener('blur', () => {
+      setTimeout(() => suggestions.classList.remove('show'), 200);
+    });
+
+    // Category change
+    const categorySelect = document.getElementById('category');
+    const otherFields = document.getElementById('otherFields');
+    const pointsDisplay = document.getElementById('pointsDisplay');
+
+    categorySelect.addEventListener('change', () => {
+      const val = categorySelect.value;
+      if (val === 'other') {
+        otherFields.classList.add('show');
+        updatePoints();
+      } else {
+        otherFields.classList.remove('show');
+        const opt = categorySelect.options[categorySelect.selectedIndex];
+        pointsDisplay.textContent = opt.dataset.points ? `${opt.dataset.points} pts` : '0 pts';
+      }
+    });
+
+    document.getElementById('customPoints').addEventListener('input', updatePoints);
+
+    function updatePoints() {
+      const val = categorySelect.value;
+      if (val === 'other') {
+        pointsDisplay.textContent = `${document.getElementById('customPoints').value || 0} pts`;
+      }
+    }
+
+    // Form submit
+    document.getElementById('pointsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const message = document.getElementById('message');
+      const name = nameInput.value.trim();
+      const categoryVal = categorySelect.value;
+
+      if (!name) {
+        message.textContent = 'Please enter your name';
+        message.className = 'message error';
+        return;
+      }
+
+      // Get or create member
+      if (!selectedMemberId) {
+        const memberRes = await fetch('/api/members', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const member = await memberRes.json();
+        selectedMemberId = member.id;
+      }
+
+      let requestData = {
+        member_id: selectedMemberId,
+        explanation: document.getElementById('explanation').value
+      };
+
+      if (categoryVal === 'other') {
+        requestData.custom_category = document.getElementById('customCategory').value;
+        requestData.requested_points = parseInt(document.getElementById('customPoints').value);
+      } else {
+        requestData.category_id = parseInt(categoryVal);
+        const cat = categories.find(c => c.id === parseInt(categoryVal));
+        requestData.requested_points = cat.default_points;
+      }
+
+      const res = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+      });
+
+      if (res.ok) {
+        message.textContent = 'Points requested! Waiting for admin approval.';
+        message.className = 'message success';
+        e.target.reset();
+        pointsDisplay.textContent = '0 pts';
+        otherFields.classList.remove('show');
+        selectedMemberId = null;
+      } else {
+        const err = await res.json();
+        message.textContent = err.error || 'Something went wrong';
+        message.className = 'message error';
+      }
+    });
+  </script>
+</body>
+</html>

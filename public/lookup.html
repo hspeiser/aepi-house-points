@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lookup - AEPi House Points</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 30px; font-size: 2em; }
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .nav a {
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .nav a:hover, .nav a.active { background: rgba(255,255,255,0.2); }
+    .card {
+      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      margin-bottom: 15px;
+    }
+    .search-box {
+      position: relative;
+      margin-bottom: 20px;
+      z-index: 20;
+    }
+    input {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 16px;
+    }
+    input::placeholder { color: rgba(255,255,255,0.5); }
+    .member-list {
+      display: none;
+      position: absolute;
+      top: calc(100% - 15px);
+      left: 0;
+      right: 0;
+      background: #1a1a2e;
+      border-radius: 0 0 8px 8px;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 30;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .member-list.show { display: block; }
+    .member-item {
+      padding: 12px 15px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .member-item:hover { background: rgba(255,255,255,0.1); }
+    .member-item .points { color: #4ade80; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stat-box {
+      background: rgba(0,0,0,0.2);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-value { font-size: 2em; font-weight: bold; }
+    .stat-value.green { color: #4ade80; }
+    .stat-value.red { color: #ef4444; }
+    .stat-value.yellow { color: #fbbf24; }
+    .stat-label { font-size: 0.85em; color: rgba(255,255,255,0.6); margin-top: 5px; }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-category { font-weight: 500; }
+    .history-date { font-size: 0.85em; color: rgba(255,255,255,0.5); }
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 10px;
+      font-size: 0.8em;
+      font-weight: 500;
+    }
+    .status-approved { background: rgba(74,222,128,0.2); color: #4ade80; }
+    .status-denied { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .status-pending { background: rgba(251,191,36,0.2); color: #fbbf24; }
+    .profile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .profile-name { font-size: 1.5em; font-weight: bold; }
+    .total-points {
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #000;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 1.2em;
+    }
+    .leaderboard-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      cursor: pointer;
+    }
+    .leaderboard-item:hover { background: rgba(255,255,255,0.05); margin: 0 -20px; padding: 12px 20px; }
+    .rank { font-size: 1.2em; font-weight: bold; width: 30px; color: rgba(255,255,255,0.5); }
+    .rank.gold { color: #fbbf24; }
+    .rank.silver { color: #94a3b8; }
+    .rank.bronze { color: #f97316; }
+    .leaderboard-name { flex: 1; margin-left: 15px; }
+    .leaderboard-points { color: #4ade80; font-weight: 600; }
+    h2 { margin-bottom: 15px; font-size: 1.2em; }
+    #profile { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Lookup</h1>
+    <nav class="nav">
+      <a href="/">Submit</a>
+      <a href="/admin.html">Admin</a>
+      <a href="/lookup.html" class="active">Lookup</a>
+    </nav>
+
+    <div class="card search-box">
+      <input type="text" id="search" placeholder="Search for a member..." autocomplete="off">
+      <div class="member-list" id="memberList"></div>
+    </div>
+
+    <div class="card" id="leaderboard">
+      <h2>Leaderboard</h2>
+      <div id="leaderboardList"></div>
+    </div>
+
+    <div class="card" id="profile">
+      <div class="profile-header">
+        <div class="profile-name" id="profileName"></div>
+        <div class="total-points" id="totalPoints">0 pts</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value green" id="approvedCount">0</div>
+          <div class="stat-label">Approved</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value red" id="deniedCount">0</div>
+          <div class="stat-label">Denied</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value yellow" id="pendingCount">0</div>
+          <div class="stat-label">Pending</div>
+        </div>
+      </div>
+
+      <h2>History</h2>
+      <div id="history"></div>
+    </div>
+  </div>
+
+  <script>
+    const search = document.getElementById('search');
+    const memberList = document.getElementById('memberList');
+    const profile = document.getElementById('profile');
+    const leaderboard = document.getElementById('leaderboard');
+
+    // Load leaderboard
+    async function loadLeaderboard() {
+      const res = await fetch('/api/leaderboard');
+      const data = await res.json();
+      const list = document.getElementById('leaderboardList');
+
+      list.innerHTML = data.map((m, i) => {
+        let rankClass = '';
+        if (i === 0) rankClass = 'gold';
+        else if (i === 1) rankClass = 'silver';
+        else if (i === 2) rankClass = 'bronze';
+
+        return `
+          <div class="leaderboard-item" onclick="loadProfile(${m.id})">
+            <div class="rank ${rankClass}">${i + 1}</div>
+            <div class="leaderboard-name">${escapeHtml(m.name)}</div>
+            <div class="leaderboard-points">${m.total_points} pts</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    loadLeaderboard();
+
+    // Search
+    search.addEventListener('input', async () => {
+      const val = search.value.trim();
+      if (val.length < 1) {
+        memberList.classList.remove('show');
+        return;
+      }
+
+      const res = await fetch(`/api/members?search=${encodeURIComponent(val)}`);
+      const members = await res.json();
+
+      memberList.innerHTML = members.map(m => `
+        <div class="member-item" onclick="loadProfile(${m.id})">
+          <span>${escapeHtml(m.name)}</span>
+        </div>
+      `).join('');
+
+      memberList.classList.toggle('show', members.length > 0);
+    });
+
+    search.addEventListener('blur', () => {
+      setTimeout(() => memberList.classList.remove('show'), 200);
+    });
+
+    async function loadProfile(memberId) {
+      memberList.classList.remove('show');
+      search.value = '';
+
+      // Get stats
+      const statsRes = await fetch(`/api/members/${memberId}/stats`);
+      const { member, stats } = await statsRes.json();
+
+      // Get history
+      const historyRes = await fetch(`/api/requests/member/${memberId}`);
+      const history = await historyRes.json();
+
+      // Update UI
+      document.getElementById('profileName').textContent = member.name;
+      document.getElementById('totalPoints').textContent = `${stats.total_points || 0} pts`;
+      document.getElementById('approvedCount').textContent = stats.approved_count || 0;
+      document.getElementById('deniedCount').textContent = stats.denied_count || 0;
+      document.getElementById('pendingCount').textContent = stats.pending_count || 0;
+
+      const historyContainer = document.getElementById('history');
+      if (history.length === 0) {
+        historyContainer.innerHTML = '<p style="color: rgba(255,255,255,0.5);">No requests yet</p>';
+      } else {
+        historyContainer.innerHTML = history.map(r => `
+          <div class="history-item">
+            <div>
+              <div class="history-category">${r.category_name ? escapeHtml(r.category_name) : escapeHtml(r.custom_category || 'Other')}</div>
+              <div class="history-date">${new Date(r.created_at).toLocaleDateString()}</div>
+            </div>
+            <div style="text-align: right;">
+              <span class="status-badge status-${r.status}">${r.status}</span>
+              <div style="margin-top: 5px; font-weight: 600;">
+                ${r.status === 'approved' ? `+${r.approved_points}` : r.requested_points} pts
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      leaderboard.style.display = 'none';
+      profile.style.display = 'block';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
