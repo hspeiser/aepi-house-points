@@ -151,12 +151,17 @@ app.get('/api/leaderboard', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize DB then start server
-initDb().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  initDb().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
   });
-}).catch(err => {
-  console.error('Failed to initialize database:', err);
-  process.exit(1);
-});
+}
+
+// Export for Vercel
+module.exports = app;
