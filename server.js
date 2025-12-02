@@ -174,15 +174,35 @@ app.get('/api/leaderboard', async (req, res) => {
 // Admin auth
 const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
-const adminTokens = new Set();
+const TOKEN_SECRET = process.env.TOKEN_SECRET || ADMIN_PASSWORD + '_secret_key';
 
 function generateToken() {
-  return crypto.randomBytes(32).toString('hex');
+  const timestamp = Date.now().toString();
+  const signature = crypto.createHmac('sha256', TOKEN_SECRET).update(timestamp).digest('hex');
+  return `${timestamp}.${signature}`;
+}
+
+function verifyToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+
+  const [timestamp, signature] = parts;
+  const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(timestamp).digest('hex');
+
+  // Check signature matches
+  if (signature !== expectedSig) return false;
+
+  // Check token is not older than 24 hours
+  const age = Date.now() - parseInt(timestamp);
+  if (age > 24 * 60 * 60 * 1000) return false;
+
+  return true;
 }
 
 function requireAdmin(req, res, next) {
   const token = req.headers['x-admin-token'];
-  if (!token || !adminTokens.has(token)) {
+  if (!verifyToken(token)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
@@ -202,7 +222,6 @@ app.post('/api/admin/login', (req, res) => {
 
   if (match) {
     const token = generateToken();
-    adminTokens.add(token);
     res.json({ success: true, token });
   } else {
     res.status(401).json({ error: 'Wrong password' });
