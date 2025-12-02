@@ -137,6 +137,28 @@ app.put('/api/requests/:id', requireAdmin, async (req, res) => {
   res.json({ message: 'Request updated' });
 });
 
+// Get all requests (with optional status filter)
+app.get('/api/requests', async (req, res) => {
+  const { status } = req.query;
+  let query = `
+    SELECT r.*, m.name as member_name, c.name as category_name
+    FROM requests r
+    JOIN members m ON r.member_id = m.id
+    LEFT JOIN categories c ON r.category_id = c.id
+  `;
+  const params = [];
+
+  if (status && ['pending', 'approved', 'denied'].includes(status)) {
+    query += ' WHERE r.status = $1';
+    params.push(status);
+  }
+
+  query += ' ORDER BY r.created_at DESC LIMIT 100';
+
+  const { rows } = await pool.query(query, params);
+  res.json(rows);
+});
+
 // Leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   const { rows } = await pool.query(`
