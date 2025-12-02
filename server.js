@@ -174,7 +174,39 @@ app.get('/api/leaderboard', async (req, res) => {
 // Admin auth
 const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
-const TOKEN_SECRET = process.env.TOKEN_SECRET || ADMIN_PASSWORD + '_secret_key';
+const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.createHash('sha256').update(ADMIN_PASSWORD + 'aepi_secret').digest('hex');
+
+// Rate limiting for login attempts
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const attempts = loginAttempts.get(ip);
+
+  if (!attempts) return true;
+  if (now - attempts.firstAttempt > LOCKOUT_TIME) {
+    loginAttempts.delete(ip);
+    return true;
+  }
+  return attempts.count < MAX_ATTEMPTS;
+}
+
+function recordFailedAttempt(ip) {
+  const now = Date.now();
+  const attempts = loginAttempts.get(ip);
+
+  if (!attempts || now - attempts.firstAttempt > LOCKOUT_TIME) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+  } else {
+    attempts.count++;
+  }
+}
+
+function clearAttempts(ip) {
+  loginAttempts.delete(ip);
+}
 
 function generateToken() {
   const timestamp = Date.now().toString();
@@ -209,10 +241,18 @@ function requireAdmin(req, res, next) {
 }
 
 app.post('/api/admin/login', (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+
+  // Check rate limit
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  }
+
   const { password } = req.body;
 
   // Validate input
   if (typeof password !== 'string' || password.length > 100) {
+    recordFailedAttempt(ip);
     return res.status(401).json({ error: 'Wrong password' });
   }
 
@@ -221,9 +261,11 @@ app.post('/api/admin/login', (req, res) => {
     crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD));
 
   if (match) {
+    clearAttempts(ip);
     const token = generateToken();
     res.json({ success: true, token });
   } else {
+    recordFailedAttempt(ip);
     res.status(401).json({ error: 'Wrong password' });
   }
 });
