@@ -63,7 +63,7 @@ app.post('/api/requests', async (req, res) => {
 });
 
 // Get all pending requests (admin)
-app.get('/api/requests/pending', async (req, res) => {
+app.get('/api/requests/pending', requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT r.*, m.name as member_name, c.name as category_name
     FROM requests r
@@ -76,7 +76,7 @@ app.get('/api/requests/pending', async (req, res) => {
 });
 
 // Get all approved requests (admin)
-app.get('/api/requests/approved', async (req, res) => {
+app.get('/api/requests/approved', requireAdmin, async (req, res) => {
   const { rows } = await pool.query(`
     SELECT r.*, m.name as member_name, c.name as category_name
     FROM requests r
@@ -121,7 +121,7 @@ app.get('/api/members/:memberId/stats', async (req, res) => {
 });
 
 // Approve/deny request (admin)
-app.put('/api/requests/:id', async (req, res) => {
+app.put('/api/requests/:id', requireAdmin, async (req, res) => {
   const { status, approved_points, admin_note } = req.body;
 
   if (!['approved', 'denied'].includes(status)) {
@@ -149,9 +149,22 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(rows);
 });
 
-// Admin login
+// Admin auth
 const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
+const adminTokens = new Set();
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function requireAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  if (!token || !adminTokens.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
@@ -166,7 +179,9 @@ app.post('/api/admin/login', (req, res) => {
     crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD));
 
   if (match) {
-    res.json({ success: true });
+    const token = generateToken();
+    adminTokens.add(token);
+    res.json({ success: true, token });
   } else {
     res.status(401).json({ error: 'Wrong password' });
   }

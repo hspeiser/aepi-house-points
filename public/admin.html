@@ -226,9 +226,13 @@
   </div>
 
   <script>
+    let adminToken = sessionStorage.getItem('adminToken');
+
     // Check if already logged in
-    if (sessionStorage.getItem('adminAuth') === 'true') {
+    if (adminToken) {
       document.getElementById('loginOverlay').classList.add('hidden');
+      loadRequests();
+      loadApproved();
     }
 
     async function checkPassword() {
@@ -240,8 +244,12 @@
           body: JSON.stringify({ password: input })
         });
         if (res.ok) {
-          sessionStorage.setItem('adminAuth', 'true');
+          const data = await res.json();
+          adminToken = data.token;
+          sessionStorage.setItem('adminToken', adminToken);
           document.getElementById('loginOverlay').classList.add('hidden');
+          loadRequests();
+          loadApproved();
         } else {
           document.getElementById('loginError').classList.add('show');
         }
@@ -250,8 +258,20 @@
       }
     }
 
+    function adminHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken
+      };
+    }
+
     async function loadRequests() {
-      const res = await fetch('/api/requests/pending');
+      const res = await fetch('/api/requests/pending', { headers: adminHeaders() });
+      if (res.status === 401) {
+        sessionStorage.removeItem('adminToken');
+        location.reload();
+        return;
+      }
       const requests = await res.json();
       const container = document.getElementById('requests');
       document.getElementById('pending-count').textContent = requests.length;
@@ -316,7 +336,7 @@
     async function updateRequest(id, status, points) {
       await fetch(`/api/requests/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders(),
         body: JSON.stringify({ status, approved_points: points })
       });
       loadRequests();
@@ -331,7 +351,8 @@
     }
 
     async function loadApproved() {
-      const res = await fetch('/api/requests/approved');
+      const res = await fetch('/api/requests/approved', { headers: adminHeaders() });
+      if (res.status === 401) return;
       const requests = await res.json();
       const container = document.getElementById('approved-requests');
       document.getElementById('approved-count').textContent = requests.length;
@@ -370,7 +391,7 @@
       const points = parseInt(document.getElementById(`edit-points-${id}`).value);
       await fetch(`/api/requests/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders(),
         body: JSON.stringify({ status: 'approved', approved_points: points })
       });
       loadApproved();
@@ -380,15 +401,17 @@
       if (confirm('Revoke this approval? The request will be denied.')) {
         await fetch(`/api/requests/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders(),
           body: JSON.stringify({ status: 'denied', approved_points: null })
         });
         loadApproved();
       }
     }
 
-    loadRequests();
-    loadApproved();
+    // Only load if logged in (handled above)
+    if (!adminToken) {
+      // Show login overlay
+    }
   </script>
 </body>
 </html>
