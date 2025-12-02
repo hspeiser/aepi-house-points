@@ -150,11 +150,22 @@ app.get('/api/leaderboard', async (req, res) => {
 });
 
 // Admin login
+const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
-  if (password === ADMIN_PASSWORD) {
+
+  // Validate input
+  if (typeof password !== 'string' || password.length > 100) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+
+  // Timing-safe comparison
+  const match = password.length === ADMIN_PASSWORD.length &&
+    crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD));
+
+  if (match) {
     res.json({ success: true });
   } else {
     res.status(401).json({ error: 'Wrong password' });
