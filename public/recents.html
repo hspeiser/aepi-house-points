@@ -67,6 +67,7 @@
     .request-name { font-weight: 600; font-size: 1.1em; }
     .request-category { color: rgba(255,255,255,0.7); font-size: 0.9em; margin-top: 3px; }
     .request-time { color: rgba(255,255,255,0.5); font-size: 0.8em; margin-top: 5px; }
+    .request-desc { color: rgba(255,255,255,0.6); font-size: 0.85em; font-style: italic; margin-top: 5px; }
     .request-right { text-align: right; }
     .request-points { font-weight: 600; font-size: 1.2em; }
     .status-badge {
@@ -137,6 +138,7 @@
           <div class="request-info">
             <div class="request-name">${escapeHtml(r.member_name)}</div>
             <div class="request-category">${r.category_name ? escapeHtml(r.category_name) : escapeHtml(r.custom_category || 'Other')}</div>
+            ${r.explanation ? `<div class="request-desc">"${escapeHtml(r.explanation)}"</div>` : ''}
             <div class="request-time">${formatTime(r.created_at)}</div>
           </div>
           <div class="request-right">
