@@ -38,13 +38,16 @@ async function initDb() {
   const { rows } = await pool.query('SELECT COUNT(*) as count FROM categories');
   if (parseInt(rows[0].count) === 0) {
     const categories = [
-      ['Set-up', 3],
-      ['Clean-up', 3],
-      ['Sober Brother', 5],
-      ['Supply Run', 2],
-      ['Discretionary', 2],
-      ['Cleaning', 2],
-      ['Social', 4],
+      ['Chapter Meeting', 10],
+      ['New Member Education', 3],
+      ['Event Setup', 2],
+      ['Event Cleanup', 2],
+      ['Sober Brother (Exchange)', 4],
+      ['Sober Brother (Party/Tailgate)', 7],
+      ['Supply Run (Driver)', 7],
+      ['Supply Run (Passenger)', 3],
+      ['DJ Work (per hour, max 15)', 5],
+      ['DJ Learning Session', 10],
     ];
     for (const [name, points] of categories) {
       await pool.query('INSERT INTO categories (name, default_points) VALUES ($1, $2)', [name, points]);
