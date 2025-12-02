@@ -149,6 +149,18 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(rows);
 });
 
+// Admin login
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'Wrong password' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 // For local development

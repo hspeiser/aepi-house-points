@@ -226,19 +226,26 @@
   </div>
 
   <script>
-    const ADMIN_PASSWORD = 'touse123';
-
     // Check if already logged in
     if (sessionStorage.getItem('adminAuth') === 'true') {
       document.getElementById('loginOverlay').classList.add('hidden');
     }
 
-    function checkPassword() {
+    async function checkPassword() {
       const input = document.getElementById('password').value;
-      if (input === ADMIN_PASSWORD) {
-        sessionStorage.setItem('adminAuth', 'true');
-        document.getElementById('loginOverlay').classList.add('hidden');
-      } else {
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: input })
+        });
+        if (res.ok) {
+          sessionStorage.setItem('adminAuth', 'true');
+          document.getElementById('loginOverlay').classList.add('hidden');
+        } else {
+          document.getElementById('loginError').classList.add('show');
+        }
+      } catch (e) {
         document.getElementById('loginError').classList.add('show');
       }
     }
