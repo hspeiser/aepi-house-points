@@ -171,6 +171,57 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(rows);
 });
 
+// CSV Export
+app.get('/api/export/csv', async (req, res) => {
+  // Get all data
+  const members = await pool.query(`
+    SELECT m.*, COALESCE(SUM(r.approved_points), 0) as total_points
+    FROM members m
+    LEFT JOIN requests r ON m.id = r.member_id AND r.status = 'approved'
+    GROUP BY m.id
+    ORDER BY total_points DESC
+  `);
+
+  const requests = await pool.query(`
+    SELECT r.*, m.name as member_name, c.name as category_name
+    FROM requests r
+    JOIN members m ON r.member_id = m.id
+    LEFT JOIN categories c ON r.category_id = c.id
+    ORDER BY r.created_at DESC
+  `);
+
+  const categories = await pool.query('SELECT * FROM categories ORDER BY id');
+
+  // Build CSV
+  let csv = 'AEPI HOUSE POINTS EXPORT\n';
+  csv += 'Generated: ' + new Date().toISOString() + '\n\n';
+
+  // Members summary
+  csv += '=== MEMBERS LEADERBOARD ===\n';
+  csv += 'Rank,Name,Total Points\n';
+  members.rows.forEach((m, i) => {
+    csv += `${i + 1},"${m.name}",${m.total_points}\n`;
+  });
+
+  csv += '\n=== CATEGORIES ===\n';
+  csv += 'ID,Name,Default Points\n';
+  categories.rows.forEach(c => {
+    csv += `${c.id},"${c.name}",${c.default_points}\n`;
+  });
+
+  csv += '\n=== ALL REQUESTS ===\n';
+  csv += 'ID,Member,Category,Custom Category,Requested Points,Approved Points,Status,Explanation,Created At,Resolved At\n';
+  requests.rows.forEach(r => {
+    const explanation = (r.explanation || '').replace(/"/g, '""');
+    const customCat = (r.custom_category || '').replace(/"/g, '""');
+    csv += `${r.id},"${r.member_name}","${r.category_name || ''}","${customCat}",${r.requested_points},${r.approved_points || ''},${r.status},"${explanation}",${r.created_at || ''},${r.resolved_at || ''}\n`;
+  });
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=aepi-house-points-backup-' + new Date().toISOString().split('T')[0] + '.csv');
+  res.send(csv);
+});
+
 // Admin auth
 const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
