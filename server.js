@@ -159,6 +159,57 @@ app.get('/api/requests', async (req, res) => {
   res.json(rows);
 });
 
+// Bulk attendance (admin)
+app.post('/api/attendance/bulk', requireAdmin, async (req, res) => {
+  const { event_type, event_date, member_ids } = req.body;
+
+  if (!event_type || !event_date || !member_ids || !Array.isArray(member_ids) || member_ids.length === 0) {
+    return res.status(400).json({ error: 'Event type, date, and member IDs are required' });
+  }
+
+  // Determine category and points based on event type
+  let categoryName, points;
+  if (event_type === 'chapter') {
+    categoryName = 'Chapter Meeting';
+    points = 10;
+  } else if (event_type === 'nme') {
+    categoryName = 'New Member Education';
+    points = 3;
+  } else {
+    return res.status(400).json({ error: 'Invalid event type' });
+  }
+
+  // Get category ID
+  const categoryResult = await pool.query('SELECT id FROM categories WHERE name = $1', [categoryName]);
+  if (categoryResult.rows.length === 0) {
+    return res.status(400).json({ error: 'Category not found' });
+  }
+  const categoryId = categoryResult.rows[0].id;
+
+  // Format the date for the explanation
+  const formattedDate = new Date(event_date).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  });
+  const explanation = `${categoryName} attendance - ${formattedDate}`;
+
+  // Insert a pre-approved request for each member
+  let insertedCount = 0;
+  for (const memberId of member_ids) {
+    try {
+      await pool.query(`
+        INSERT INTO requests (member_id, category_id, requested_points, approved_points, explanation, status, resolved_at)
+        VALUES ($1, $2, $3, $4, $5, 'approved', CURRENT_TIMESTAMP)
+      `, [memberId, categoryId, points, points, explanation]);
+      insertedCount++;
+    } catch (err) {
+      // Skip invalid member IDs
+      console.error(`Failed to insert attendance for member ${memberId}:`, err.message);
+    }
+  }
+
+  res.json({ message: 'Attendance recorded', count: insertedCount });
+});
+
 // Leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   const { rows } = await pool.query(`

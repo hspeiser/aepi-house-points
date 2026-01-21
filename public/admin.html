@@ -191,6 +191,99 @@
     .btn-edit { background: #3b82f6; color: #fff; }
     .btn-small { padding: 8px 15px; font-size: 13px; }
     h2.section-title { margin-bottom: 15px; font-size: 1.2em; color: rgba(255,255,255,0.8); }
+
+    /* Attendance form styles */
+    .attendance-form { margin-bottom: 20px; }
+    .form-row {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+    .form-group { flex: 1; min-width: 200px; }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: rgba(255,255,255,0.8);
+      font-size: 0.9em;
+    }
+    .form-group select, .form-group input[type="date"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    .form-group select option { background: #1a1a2e; }
+    .members-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 15px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .member-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .member-checkbox:hover { background: rgba(255,255,255,0.1); }
+    .member-checkbox input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #4ade80;
+    }
+    .member-checkbox span { font-size: 0.95em; }
+    .select-all-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .btn-select { background: rgba(255,255,255,0.15); color: #fff; }
+    .attendance-submit {
+      width: 100%;
+      padding: 15px;
+      font-size: 16px;
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .attendance-submit:hover { transform: translateY(-2px); }
+    .attendance-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Filter styles */
+    .filter-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      align-items: center;
+    }
+    .filter-row input {
+      flex: 1;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 14px;
+    }
+    .filter-row input::placeholder { color: rgba(255,255,255,0.5); }
   </style>
 </head>
 <body>
@@ -215,6 +308,7 @@
     <div class="tabs">
       <button class="tab active" onclick="showTab('pending')" id="tab-pending">Pending <span class="tab-count" id="pending-count">0</span></button>
       <button class="tab" onclick="showTab('approved')" id="tab-approved">Approved <span class="tab-count" id="approved-count">0</span></button>
+      <button class="tab" onclick="showTab('attendance')" id="tab-attendance">Attendance</button>
       <a href="/api/export/csv" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
 
@@ -223,18 +317,56 @@
     </div>
 
     <div id="approved-section" class="section">
+      <div class="filter-row">
+        <input type="text" id="approved-filter" placeholder="Filter by name..." oninput="filterApproved()">
+      </div>
       <div id="approved-requests"></div>
+    </div>
+
+    <div id="attendance-section" class="section">
+      <div class="card">
+        <h2 class="section-title">Record Attendance</h2>
+        <div class="attendance-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="event-type">Event Type</label>
+              <select id="event-type">
+                <option value="chapter">Chapter Meeting (10 pts)</option>
+                <option value="nme">New Member Education (3 pts)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="event-date">Event Date</label>
+              <input type="date" id="event-date">
+            </div>
+          </div>
+          <label style="display:block;margin-bottom:10px;color:rgba(255,255,255,0.8);font-size:0.9em;">Select Attendees</label>
+          <div class="select-all-row">
+            <button class="btn btn-select btn-small" onclick="selectAllMembers()">Select All</button>
+            <button class="btn btn-select btn-small" onclick="deselectAllMembers()">Deselect All</button>
+          </div>
+          <div class="members-grid" id="members-grid">
+            <p style="color:rgba(255,255,255,0.5);">Loading members...</p>
+          </div>
+          <button class="attendance-submit" id="submit-attendance" onclick="submitAttendance()">Record Attendance</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     let adminToken = sessionStorage.getItem('adminToken');
 
+    let allApprovedRequests = [];
+    let allMembers = [];
+
     // Check if already logged in
     if (adminToken) {
       document.getElementById('loginOverlay').classList.add('hidden');
       loadRequests();
       loadApproved();
+      loadMembers();
+      setDefaultDate();
     }
 
     async function checkPassword() {
@@ -252,6 +384,8 @@
           document.getElementById('loginOverlay').classList.add('hidden');
           loadRequests();
           loadApproved();
+          loadMembers();
+          setDefaultDate();
         } else {
           document.getElementById('loginError').classList.add('show');
         }
@@ -355,9 +489,21 @@
     async function loadApproved() {
       const res = await fetch('/api/requests/approved', { headers: adminHeaders() });
       if (res.status === 401) return;
-      const requests = await res.json();
+      allApprovedRequests = await res.json();
+      document.getElementById('approved-count').textContent = allApprovedRequests.length;
+      renderApproved(allApprovedRequests);
+    }
+
+    function filterApproved() {
+      const filter = document.getElementById('approved-filter').value.toLowerCase();
+      const filtered = allApprovedRequests.filter(r =>
+        r.member_name.toLowerCase().includes(filter)
+      );
+      renderApproved(filtered);
+    }
+
+    function renderApproved(requests) {
       const container = document.getElementById('approved-requests');
-      document.getElementById('approved-count').textContent = requests.length;
 
       if (requests.length === 0) {
         container.innerHTML = `
@@ -407,6 +553,97 @@
           body: JSON.stringify({ status: 'denied', approved_points: null })
         });
         loadApproved();
+      }
+    }
+
+    // Attendance functions
+    function setDefaultDate() {
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('event-date').value = today;
+    }
+
+    async function loadMembers() {
+      const res = await fetch('/api/members');
+      allMembers = await res.json();
+      // Sort alphabetically by name
+      allMembers.sort((a, b) => a.name.localeCompare(b.name));
+      renderMembersGrid();
+    }
+
+    function renderMembersGrid() {
+      const container = document.getElementById('members-grid');
+      if (allMembers.length === 0) {
+        container.innerHTML = `<p style="color:rgba(255,255,255,0.5);">No members found. Add members through the Submit page first.</p>`;
+        return;
+      }
+
+      container.innerHTML = allMembers.map(m => `
+        <label class="member-checkbox">
+          <input type="checkbox" name="attendee" value="${m.id}">
+          <span>${escapeHtml(m.name)}</span>
+        </label>
+      `).join('');
+    }
+
+    function selectAllMembers() {
+      document.querySelectorAll('#members-grid input[type="checkbox"]').forEach(cb => cb.checked = true);
+    }
+
+    function deselectAllMembers() {
+      document.querySelectorAll('#members-grid input[type="checkbox"]').forEach(cb => cb.checked = false);
+    }
+
+    async function submitAttendance() {
+      const eventType = document.getElementById('event-type').value;
+      const eventDate = document.getElementById('event-date').value;
+      const checkedBoxes = document.querySelectorAll('#members-grid input[type="checkbox"]:checked');
+      const memberIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+
+      if (memberIds.length === 0) {
+        alert('Please select at least one member.');
+        return;
+      }
+
+      if (!eventDate) {
+        alert('Please select a date.');
+        return;
+      }
+
+      const btn = document.getElementById('submit-attendance');
+      btn.disabled = true;
+      btn.textContent = 'Recording...';
+
+      try {
+        const res = await fetch('/api/attendance/bulk', {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({
+            event_type: eventType,
+            event_date: eventDate,
+            member_ids: memberIds
+          })
+        });
+
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Attendance recorded for ${data.count} members!`);
+          deselectAllMembers();
+          loadApproved();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to record attendance'));
+        }
+      } catch (e) {
+        alert('Error recording attendance');
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Record Attendance';
       }
     }
 
