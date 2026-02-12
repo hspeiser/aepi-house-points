@@ -159,12 +159,13 @@
     let selectedMemberId = null;
 
     // Load categories
+    const adminOnlyCategories = ['Chapter Meeting', 'New Member Education'];
     fetch('/api/categories')
       .then(r => r.json())
       .then(data => {
         categories = data;
         const select = document.getElementById('category');
-        data.forEach(cat => {
+        data.filter(cat => !adminOnlyCategories.includes(cat.name)).forEach(cat => {
           const opt = document.createElement('option');
           opt.value = cat.id;
           opt.textContent = `${cat.name} (${cat.default_points} pts)`;
