@@ -309,6 +309,7 @@
       <button class="tab active" onclick="showTab('pending')" id="tab-pending">Pending <span class="tab-count" id="pending-count">0</span></button>
       <button class="tab" onclick="showTab('approved')" id="tab-approved">Approved <span class="tab-count" id="approved-count">0</span></button>
       <button class="tab" onclick="showTab('attendance')" id="tab-attendance">Attendance</button>
+      <button class="tab" onclick="showTab('members')" id="tab-members">Members <span class="tab-count" id="members-count">0</span></button>
       <a href="/api/export/csv" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
 
@@ -351,6 +352,22 @@
           <button class="attendance-submit" id="submit-attendance" onclick="submitAttendance()">Record Attendance</button>
         </div>
       </div>
+    </div>
+
+    <div id="members-section" class="section">
+      <div class="card">
+        <h2 class="section-title">Add New Member</h2>
+        <div class="form-row">
+          <div class="form-group" style="flex:3">
+            <input type="text" id="new-member-name" placeholder="Enter member name" style="width:100%;padding:10px 12px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-size:14px;" onkeypress="if(event.key==='Enter')addMember()">
+          </div>
+          <button class="btn btn-approve" onclick="addMember()" style="flex:1">Add Member</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <input type="text" id="members-filter" placeholder="Filter by name..." oninput="filterMembersList()">
+      </div>
+      <div id="members-list"></div>
     </div>
   </div>
 
@@ -568,6 +585,7 @@
       // Sort alphabetically by name
       allMembers.sort((a, b) => a.name.localeCompare(b.name));
       renderMembersGrid();
+      renderMembersList(allMembers);
     }
 
     function renderMembersGrid() {
@@ -644,6 +662,106 @@
       } finally {
         btn.disabled = false;
         btn.textContent = 'Record Attendance';
+      }
+    }
+
+    // Members management functions
+    function renderMembersList(members) {
+      const container = document.getElementById('members-list');
+      document.getElementById('members-count').textContent = allMembers.length;
+
+      if (members.length === 0) {
+        container.innerHTML = `
+          <div class="card empty-state">
+            <h2>No members found</h2>
+            <p>Add members using the form above.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = members.map(m => `
+        <div class="card" id="member-${m.id}" style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;">
+          <span style="font-size:1.1em;">${escapeHtml(m.name)}</span>
+          <button class="btn btn-deny btn-small" onclick="deleteMember(${m.id}, '${escapeHtml(m.name).replace(/'/g, "\\'")}')">Remove</button>
+        </div>
+      `).join('');
+    }
+
+    function filterMembersList() {
+      const filter = document.getElementById('members-filter').value.toLowerCase();
+      const filtered = allMembers.filter(m =>
+        m.name.toLowerCase().includes(filter)
+      );
+      renderMembersList(filtered);
+    }
+
+    async function addMember() {
+      const nameInput = document.getElementById('new-member-name');
+      const name = nameInput.value.trim();
+
+      if (!name) {
+        alert('Please enter a name.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/members', {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({ name })
+        });
+
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          nameInput.value = '';
+          await loadMembers();
+          renderMembersList(allMembers);
+          alert(`Member "${data.name}" added successfully!`);
+        } else {
+          alert('Error: ' + (data.error || 'Failed to add member'));
+        }
+      } catch (e) {
+        alert('Error adding member');
+        console.error(e);
+      }
+    }
+
+    async function deleteMember(id, name) {
+      if (!confirm(`Are you sure you want to remove "${name}"? This will also delete all their point requests.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/admin/members/${id}`, {
+          method: 'DELETE',
+          headers: adminHeaders()
+        });
+
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          await loadMembers();
+          renderMembersList(allMembers);
+          loadRequests();
+          loadApproved();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to delete member'));
+        }
+      } catch (e) {
+        alert('Error deleting member');
+        console.error(e);
       }
     }
 

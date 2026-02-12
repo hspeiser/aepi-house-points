@@ -210,6 +210,44 @@ app.post('/api/attendance/bulk', requireAdmin, async (req, res) => {
   res.json({ message: 'Attendance recorded', count: insertedCount });
 });
 
+// Add member (admin)
+app.post('/api/admin/members', requireAdmin, async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  const trimmedName = name.trim();
+
+  // Check if member already exists
+  const existing = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
+  if (existing.rows.length > 0) {
+    return res.status(400).json({ error: 'Member already exists' });
+  }
+
+  const result = await pool.query('INSERT INTO members (name) VALUES ($1) RETURNING *', [trimmedName]);
+  res.json(result.rows[0]);
+});
+
+// Delete member (admin)
+app.delete('/api/admin/members/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  // Check if member exists
+  const member = await pool.query('SELECT * FROM members WHERE id = $1', [id]);
+  if (member.rows.length === 0) {
+    return res.status(404).json({ error: 'Member not found' });
+  }
+
+  // Delete associated requests first
+  await pool.query('DELETE FROM requests WHERE member_id = $1', [id]);
+
+  // Delete the member
+  await pool.query('DELETE FROM members WHERE id = $1', [id]);
+
+  res.json({ message: 'Member deleted', name: member.rows[0].name });
+});
+
 // Leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   const { rows } = await pool.query(`
