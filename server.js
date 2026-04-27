@@ -210,6 +210,39 @@ app.post('/api/attendance/bulk', requireAdmin, async (req, res) => {
   res.json({ message: 'Attendance recorded', count: insertedCount });
 });
 
+// Award position points (admin)
+app.post('/api/admin/position-points', requireAdmin, async (req, res) => {
+  const { member_id, position, points, note } = req.body;
+
+  if (!member_id || !position || points === undefined || points === null) {
+    return res.status(400).json({ error: 'Member, position, and points are required' });
+  }
+
+  const pointsNum = parseInt(points);
+  if (isNaN(pointsNum) || pointsNum < 0 || pointsNum > 100) {
+    return res.status(400).json({ error: 'Points must be between 0 and 100' });
+  }
+
+  if (position === 'Comms' && pointsNum > 20) {
+    return res.status(400).json({ error: 'Comms points cannot exceed 20' });
+  }
+
+  // Verify member exists
+  const memberCheck = await pool.query('SELECT id FROM members WHERE id = $1', [member_id]);
+  if (memberCheck.rows.length === 0) {
+    return res.status(404).json({ error: 'Member not found' });
+  }
+
+  const explanation = note && note.trim() ? `${position} - ${note.trim()}` : position;
+
+  await pool.query(`
+    INSERT INTO requests (member_id, custom_category, requested_points, approved_points, explanation, status, resolved_at)
+    VALUES ($1, $2, $3, $4, $5, 'approved', CURRENT_TIMESTAMP)
+  `, [member_id, 'Position Points', pointsNum, pointsNum, explanation]);
+
+  res.json({ message: 'Position points awarded', points: pointsNum });
+});
+
 // Add member (admin)
 app.post('/api/admin/members', requireAdmin, async (req, res) => {
   const { name } = req.body;

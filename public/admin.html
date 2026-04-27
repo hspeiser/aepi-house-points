@@ -309,6 +309,7 @@
       <button class="tab active" onclick="showTab('pending')" id="tab-pending">Pending <span class="tab-count" id="pending-count">0</span></button>
       <button class="tab" onclick="showTab('approved')" id="tab-approved">Approved <span class="tab-count" id="approved-count">0</span></button>
       <button class="tab" onclick="showTab('attendance')" id="tab-attendance">Attendance</button>
+      <button class="tab" onclick="showTab('positions')" id="tab-positions">Position Points</button>
       <button class="tab" onclick="showTab('members')" id="tab-members">Members <span class="tab-count" id="members-count">0</span></button>
       <a href="/api/export/csv" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
@@ -351,6 +352,48 @@
           </div>
           <button class="attendance-submit" id="submit-attendance" onclick="submitAttendance()">Record Attendance</button>
         </div>
+      </div>
+    </div>
+
+    <div id="positions-section" class="section">
+      <div class="card">
+        <h2 class="section-title">Award Position Points</h2>
+        <div style="background:rgba(0,0,0,0.2);padding:15px;border-radius:8px;margin-bottom:20px;font-size:0.9em;line-height:1.8;color:rgba(255,255,255,0.85);">
+          <div style="font-weight:600;margin-bottom:6px;color:#fff;">Reference values:</div>
+          • <strong>100 pts</strong> — President<br>
+          • <strong>75 pts</strong> — Other E-board positions<br>
+          • <strong>50 pts</strong> — House Manager<br>
+          • <strong>40 pts</strong> — Other M-board positions (who actually did stuff)<br>
+          • <strong>up to 20 pts</strong> — Comms (each chair decides how much per broker)
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="position-member">Member</label>
+            <select id="position-member"><option value="">Select member...</option></select>
+          </div>
+          <div class="form-group">
+            <label for="position-role">Position</label>
+            <select id="position-role" onchange="updatePositionPoints()">
+              <option value="">Select position...</option>
+              <option value="President" data-points="100">President (100 pts)</option>
+              <option value="E-board" data-points="75">E-board – Other (75 pts)</option>
+              <option value="House Manager" data-points="50">House Manager (50 pts)</option>
+              <option value="M-board" data-points="40">M-board – Other (40 pts)</option>
+              <option value="Comms" data-points="20">Comms (up to 20 pts)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label for="position-points-input">Points</label>
+            <input type="number" id="position-points-input" min="0" max="100" placeholder="Points" style="width:100%;padding:10px 12px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-size:14px;">
+          </div>
+          <div class="form-group" style="flex:2;">
+            <label for="position-note">Note (optional)</label>
+            <input type="text" id="position-note" placeholder="e.g. social chair, philanthropy chair" style="width:100%;padding:10px 12px;border:none;border-radius:8px;background:rgba(255,255,255,0.15);color:#fff;font-size:14px;">
+          </div>
+        </div>
+        <button class="attendance-submit" id="award-position-btn" onclick="awardPositionPoints()">Award Position Points</button>
       </div>
     </div>
 
@@ -586,6 +629,81 @@
       allMembers.sort((a, b) => a.name.localeCompare(b.name));
       renderMembersGrid();
       renderMembersList(allMembers);
+      populatePositionMembers();
+    }
+
+    function populatePositionMembers() {
+      const select = document.getElementById('position-member');
+      if (!select) return;
+      select.innerHTML = '<option value="">Select member...</option>' +
+        allMembers.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+    }
+
+    function updatePositionPoints() {
+      const select = document.getElementById('position-role');
+      const opt = select.options[select.selectedIndex];
+      const pts = opt.getAttribute('data-points');
+      if (pts) document.getElementById('position-points-input').value = pts;
+    }
+
+    async function awardPositionPoints() {
+      const memberId = document.getElementById('position-member').value;
+      const position = document.getElementById('position-role').value;
+      const pointsRaw = document.getElementById('position-points-input').value;
+      const note = document.getElementById('position-note').value.trim();
+
+      if (!memberId) { alert('Please select a member.'); return; }
+      if (!position) { alert('Please select a position.'); return; }
+      const points = parseInt(pointsRaw);
+      if (isNaN(points) || points < 0) { alert('Please enter valid points.'); return; }
+      if (position === 'Comms' && points > 20) {
+        alert('Comms points cannot exceed 20.');
+        return;
+      }
+
+      const memberName = allMembers.find(m => m.id == memberId)?.name || 'this member';
+      if (!confirm(`Award ${points} pts to ${memberName} for ${position}${note ? ' (' + note + ')' : ''}?`)) return;
+
+      const btn = document.getElementById('award-position-btn');
+      btn.disabled = true;
+      btn.textContent = 'Awarding...';
+
+      try {
+        const res = await fetch('/api/admin/position-points', {
+          method: 'POST',
+          headers: adminHeaders(),
+          body: JSON.stringify({
+            member_id: parseInt(memberId),
+            position,
+            points,
+            note
+          })
+        });
+
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Awarded ${points} pts to ${memberName}!`);
+          document.getElementById('position-member').value = '';
+          document.getElementById('position-role').value = '';
+          document.getElementById('position-points-input').value = '';
+          document.getElementById('position-note').value = '';
+          loadApproved();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to award points'));
+        }
+      } catch (e) {
+        alert('Error awarding points');
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Award Position Points';
+      }
     }
 
     function renderMembersGrid() {
