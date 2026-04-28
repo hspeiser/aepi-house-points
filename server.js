@@ -399,7 +399,8 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       WHERE r.status IN ('approved','denied')
       GROUP BY m.id, m.name
       HAVING COUNT(*) FILTER (WHERE r.status IN ('approved','denied')) >= 3
-      ORDER BY approved::float / NULLIF(COUNT(*) FILTER (WHERE r.status IN ('approved','denied')),0) DESC
+      ORDER BY (COUNT(*) FILTER (WHERE r.status = 'approved'))::float
+               / NULLIF(COUNT(*) FILTER (WHERE r.status IN ('approved','denied')), 0) DESC
       LIMIT 15
     `);
 
