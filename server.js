@@ -416,19 +416,26 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
 
     // Cumulative points over time (last 60 days)
     const cumulative = await pool.query(`
-      SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
-             COALESCE(SUM(r.approved_points) OVER (ORDER BY d.day), 0)::int AS cumulative
-      FROM (
+      WITH days AS (
         SELECT generate_series(
           (CURRENT_DATE - INTERVAL '59 days')::date,
           CURRENT_DATE::date,
           '1 day'
         )::date AS day
-      ) d
-      LEFT JOIN requests r
-        ON date_trunc('day', r.resolved_at)::date = d.day
-       AND r.status = 'approved'
-      ORDER BY d.day
+      ),
+      daily AS (
+        SELECT d.day,
+               COALESCE(SUM(r.approved_points), 0)::int AS pts
+        FROM days d
+        LEFT JOIN requests r
+          ON date_trunc('day', r.resolved_at)::date = d.day
+         AND r.status = 'approved'
+        GROUP BY d.day
+      )
+      SELECT to_char(day, 'YYYY-MM-DD') AS day,
+             SUM(pts) OVER (ORDER BY day)::int AS cumulative
+      FROM daily
+      ORDER BY day
     `);
 
     res.json({
@@ -447,7 +454,7 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error('Analytics error:', err);
-    res.status(500).json({ error: 'Failed to load analytics' });
+    res.status(500).json({ error: 'Failed to load analytics', detail: err.message });
   }
 });
 

@@ -1082,7 +1082,11 @@
       try {
         const res = await fetch('/api/admin/analytics', { headers: adminHeaders() });
         if (!res.ok) {
-          document.getElementById('analytics-loading').innerHTML = '<h2>Failed to load analytics</h2>';
+          let detail = '';
+          try { const j = await res.json(); detail = j.detail || j.error || ''; } catch (_) {}
+          document.getElementById('analytics-loading').innerHTML =
+            '<h2>Failed to load analytics</h2>' +
+            (detail ? `<p style="color:rgba(255,255,255,0.6);font-size:0.85em;margin-top:8px;">${escapeHtml(detail)}</p>` : '');
           return;
         }
         const data = await res.json();
