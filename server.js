@@ -41,7 +41,7 @@ app.get('/api/members', async (req, res) => {
   res.json(result.rows);
 });
 
-// Create or get member
+// Look up member by name (creation is admin-only via /api/admin/members)
 app.post('/api/members', async (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) {
@@ -49,14 +49,13 @@ app.post('/api/members', async (req, res) => {
   }
 
   const trimmedName = name.trim();
-  let result = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
-
-  if (result.rows.length > 0 && !result.rows[0].active) {
-    return res.status(403).json({ error: 'This member was removed. Ask an admin to re-add you.' });
-  }
+  const result = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
 
   if (result.rows.length === 0) {
-    result = await pool.query('INSERT INTO members (name) VALUES ($1) RETURNING *', [trimmedName]);
+    return res.status(404).json({ error: 'Name not found. Ask an admin to add you.' });
+  }
+  if (!result.rows[0].active) {
+    return res.status(403).json({ error: 'This member was removed. Ask an admin to re-add you.' });
   }
 
   res.json(result.rows[0]);
@@ -77,6 +76,11 @@ app.post('/api/requests', async (req, res) => {
   const points = Number(requested_points);
   if (!Number.isInteger(points) || points < 1 || points > 100) {
     return res.status(400).json({ error: 'Points must be a whole number between 1 and 100' });
+  }
+
+  const memberCheck = await pool.query('SELECT id FROM members WHERE id = $1 AND active = TRUE', [member_id]);
+  if (memberCheck.rows.length === 0) {
+    return res.status(400).json({ error: 'Member not found' });
   }
 
   const result = await pool.query(`

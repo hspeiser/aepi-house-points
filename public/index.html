@@ -253,7 +253,7 @@
         return;
       }
 
-      // Get or create member
+      // Look up member (must already exist — admins add members)
       if (!selectedMemberId) {
         const memberRes = await fetch('/api/members', {
           method: 'POST',
@@ -261,6 +261,11 @@
           body: JSON.stringify({ name })
         });
         const member = await memberRes.json();
+        if (!memberRes.ok) {
+          message.textContent = member.error || 'Name not found. Ask an admin to add you.';
+          message.className = 'message error';
+          return;
+        }
         selectedMemberId = member.id;
       }
 
