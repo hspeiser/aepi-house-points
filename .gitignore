@@ -2,3 +2,5 @@ node_modules/
 points.db
 .env
 .DS_Store
+.vercel
+.env*

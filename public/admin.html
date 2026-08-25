@@ -426,7 +426,7 @@
       <button class="tab" onclick="showTab('positions')" id="tab-positions">Position Points</button>
       <button class="tab" onclick="showTab('members')" id="tab-members">Members <span class="tab-count" id="members-count">0</span></button>
       <button class="tab" onclick="showTab('analytics')" id="tab-analytics">Analytics</button>
-      <a href="/api/export/csv" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
+      <a href="#" onclick="exportCsv(); return false;" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
     </div>
 
     <div id="pending-section" class="section active">
@@ -1036,8 +1036,35 @@
       }
     }
 
+    async function exportCsv() {
+      try {
+        const res = await fetch('/api/export/csv', { headers: adminHeaders() });
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+        if (!res.ok) {
+          alert('Export failed');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aepi-house-points-backup-' + new Date().toISOString().split('T')[0] + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('Export failed');
+        console.error(e);
+      }
+    }
+
     async function deleteMember(id, name) {
-      if (!confirm(`Are you sure you want to remove "${name}"? This will also delete all their point requests.`)) {
+      if (!confirm(`Are you sure you want to remove "${name}"? Their points and history are kept — re-adding them by the same name restores everything.`)) {
         return;
       }
 

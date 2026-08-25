@@ -10,7 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "better-sqlite3": "^12.5.0",
     "express": "^5.1.0",
     "pg": "^8.16.3"
   }

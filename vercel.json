@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/ping",
+      "schedule": "0 8 * * *"
+    }
+  ],
   "builds": [
     {
       "src": "server.js",

@@ -6,6 +6,23 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+// Run initDb (table creation + migrations) once per serverless instance, before any query
+let dbReady = null;
+app.use((req, res, next) => {
+  if (!dbReady) dbReady = initDb();
+  dbReady.then(() => next()).catch(err => {
+    dbReady = null;
+    console.error('DB init failed:', err);
+    res.status(500).json({ error: 'Database unavailable' });
+  });
+});
+
+// Keep-alive ping — hit daily by Vercel cron so the free-tier database never pauses for inactivity
+app.get('/api/ping', async (req, res) => {
+  await pool.query('SELECT 1');
+  res.json({ ok: true });
+});
+
 // Get all categories
 app.get('/api/categories', async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM categories');
@@ -17,9 +34,9 @@ app.get('/api/members', async (req, res) => {
   const { search } = req.query;
   let result;
   if (search) {
-    result = await pool.query('SELECT * FROM members WHERE name ILIKE $1 ORDER BY name', [`%${search}%`]);
+    result = await pool.query('SELECT * FROM members WHERE active = TRUE AND name ILIKE $1 ORDER BY name', [`%${search}%`]);
   } else {
-    result = await pool.query('SELECT * FROM members ORDER BY name');
+    result = await pool.query('SELECT * FROM members WHERE active = TRUE ORDER BY name');
   }
   res.json(result.rows);
 });
@@ -33,6 +50,10 @@ app.post('/api/members', async (req, res) => {
 
   const trimmedName = name.trim();
   let result = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
+
+  if (result.rows.length > 0 && !result.rows[0].active) {
+    return res.status(403).json({ error: 'This member was removed. Ask an admin to re-add you.' });
+  }
 
   if (result.rows.length === 0) {
     result = await pool.query('INSERT INTO members (name) VALUES ($1) RETURNING *', [trimmedName]);
@@ -51,6 +72,11 @@ app.post('/api/requests', async (req, res) => {
 
   if (!category_id && !custom_category) {
     return res.status(400).json({ error: 'Category is required' });
+  }
+
+  const points = Number(requested_points);
+  if (!Number.isInteger(points) || points < 1 || points > 100) {
+    return res.status(400).json({ error: 'Points must be a whole number between 1 and 100' });
   }
 
   const result = await pool.query(`
@@ -228,7 +254,7 @@ app.post('/api/admin/position-points', requireAdmin, async (req, res) => {
   }
 
   // Verify member exists
-  const memberCheck = await pool.query('SELECT id FROM members WHERE id = $1', [member_id]);
+  const memberCheck = await pool.query('SELECT id FROM members WHERE id = $1 AND active = TRUE', [member_id]);
   if (memberCheck.rows.length === 0) {
     return res.status(404).json({ error: 'Member not found' });
   }
@@ -255,30 +281,30 @@ app.post('/api/admin/members', requireAdmin, async (req, res) => {
   // Check if member already exists
   const existing = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
   if (existing.rows.length > 0) {
-    return res.status(400).json({ error: 'Member already exists' });
+    if (existing.rows[0].active) {
+      return res.status(400).json({ error: 'Member already exists' });
+    }
+    // Previously removed — reactivate with all their old points intact
+    const reactivated = await pool.query('UPDATE members SET active = TRUE WHERE id = $1 RETURNING *', [existing.rows[0].id]);
+    return res.json(reactivated.rows[0]);
   }
 
   const result = await pool.query('INSERT INTO members (name) VALUES ($1) RETURNING *', [trimmedName]);
   res.json(result.rows[0]);
 });
 
-// Delete member (admin)
+// Remove member (admin) — soft delete: hides the member but keeps all their data
 app.delete('/api/admin/members/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
 
-  // Check if member exists
-  const member = await pool.query('SELECT * FROM members WHERE id = $1', [id]);
+  const member = await pool.query('SELECT * FROM members WHERE id = $1 AND active = TRUE', [id]);
   if (member.rows.length === 0) {
     return res.status(404).json({ error: 'Member not found' });
   }
 
-  // Delete associated requests first
-  await pool.query('DELETE FROM requests WHERE member_id = $1', [id]);
+  await pool.query('UPDATE members SET active = FALSE WHERE id = $1', [id]);
 
-  // Delete the member
-  await pool.query('DELETE FROM members WHERE id = $1', [id]);
-
-  res.json({ message: 'Member deleted', name: member.rows[0].name });
+  res.json({ message: 'Member removed', name: member.rows[0].name });
 });
 
 // Leaderboard
@@ -287,6 +313,7 @@ app.get('/api/leaderboard', async (req, res) => {
     SELECT m.id, m.name, COALESCE(SUM(r.approved_points), 0) as total_points
     FROM members m
     LEFT JOIN requests r ON m.id = r.member_id AND r.status = 'approved'
+    WHERE m.active = TRUE
     GROUP BY m.id
     ORDER BY total_points DESC
   `);
@@ -299,7 +326,7 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
     // Headline numbers
     const totals = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM members) AS member_count,
+        (SELECT COUNT(*) FROM members WHERE active = TRUE) AS member_count,
         (SELECT COUNT(*) FROM requests) AS total_requests,
         (SELECT COUNT(*) FROM requests WHERE status = 'pending') AS pending_count,
         (SELECT COUNT(*) FROM requests WHERE status = 'approved') AS approved_count,
@@ -338,6 +365,7 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
              COUNT(r.id) FILTER (WHERE r.status = 'approved')::int AS approvals
       FROM members m
       LEFT JOIN requests r ON r.member_id = m.id AND r.status = 'approved'
+      WHERE m.active = TRUE
       GROUP BY m.id, m.name
       ORDER BY points DESC
       LIMIT 15
@@ -348,6 +376,7 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       SELECT m.name
       FROM members m
       LEFT JOIN requests r ON r.member_id = m.id AND r.status = 'approved'
+      WHERE m.active = TRUE
       GROUP BY m.id, m.name
       HAVING COALESCE(SUM(r.approved_points),0) = 0
       ORDER BY m.name
@@ -396,7 +425,7 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
              COUNT(*) FILTER (WHERE r.status IN ('approved','denied'))::int AS resolved
       FROM members m
       JOIN requests r ON r.member_id = m.id
-      WHERE r.status IN ('approved','denied')
+      WHERE m.active = TRUE AND r.status IN ('approved','denied')
       GROUP BY m.id, m.name
       HAVING COUNT(*) FILTER (WHERE r.status IN ('approved','denied')) >= 3
       ORDER BY (COUNT(*) FILTER (WHERE r.status = 'approved'))::float
@@ -459,8 +488,8 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
   }
 });
 
-// CSV Export
-app.get('/api/export/csv', async (req, res) => {
+// CSV Export (admin)
+app.get('/api/export/csv', requireAdmin, async (req, res) => {
   // Get all data
   const members = await pool.query(`
     SELECT m.*, COALESCE(SUM(r.approved_points), 0) as total_points
@@ -486,9 +515,9 @@ app.get('/api/export/csv', async (req, res) => {
 
   // Members summary
   csv += '=== MEMBERS LEADERBOARD ===\n';
-  csv += 'Rank,Name,Total Points\n';
+  csv += 'Rank,Name,Total Points,Status\n';
   members.rows.forEach((m, i) => {
-    csv += `${i + 1},"${m.name}",${m.total_points}\n`;
+    csv += `${i + 1},"${m.name}",${m.total_points},${m.active ? 'Active' : 'Removed'}\n`;
   });
 
   csv += '\n=== CATEGORIES ===\n';
@@ -512,39 +541,36 @@ app.get('/api/export/csv', async (req, res) => {
 
 // Admin auth
 const crypto = require('crypto');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'touse123';
-const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.createHash('sha256').update(ADMIN_PASSWORD + 'aepi_secret').digest('hex');
+// In production the env vars are required — no hardcoded fallback
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? null : 'touse123');
+const TOKEN_SECRET = process.env.TOKEN_SECRET ||
+  (ADMIN_PASSWORD ? crypto.createHash('sha256').update(ADMIN_PASSWORD + 'aepi_secret').digest('hex') : null);
 
-// Rate limiting for login attempts
-const loginAttempts = new Map();
+// Rate limiting for login attempts — stored in Postgres so it survives serverless cold starts
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_MINUTES = 15;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const attempts = loginAttempts.get(ip);
-
-  if (!attempts) return true;
-  if (now - attempts.firstAttempt > LOCKOUT_TIME) {
-    loginAttempts.delete(ip);
-    return true;
-  }
-  return attempts.count < MAX_ATTEMPTS;
+function clientIp(req) {
+  // Vercel sets x-forwarded-for itself; the first entry is the real client IP
+  const fwd = req.headers['x-forwarded-for'];
+  return (fwd ? String(fwd).split(',')[0].trim() : req.ip) || 'unknown';
 }
 
-function recordFailedAttempt(ip) {
-  const now = Date.now();
-  const attempts = loginAttempts.get(ip);
-
-  if (!attempts || now - attempts.firstAttempt > LOCKOUT_TIME) {
-    loginAttempts.set(ip, { count: 1, firstAttempt: now });
-  } else {
-    attempts.count++;
-  }
+async function checkRateLimit(ip) {
+  await pool.query(`DELETE FROM login_attempts WHERE first_attempt < NOW() - INTERVAL '${LOCKOUT_MINUTES} minutes'`);
+  const { rows } = await pool.query('SELECT count FROM login_attempts WHERE ip = $1', [ip]);
+  return rows.length === 0 || rows[0].count < MAX_ATTEMPTS;
 }
 
-function clearAttempts(ip) {
-  loginAttempts.delete(ip);
+async function recordFailedAttempt(ip) {
+  await pool.query(`
+    INSERT INTO login_attempts (ip) VALUES ($1)
+    ON CONFLICT (ip) DO UPDATE SET count = login_attempts.count + 1
+  `, [ip]);
+}
+
+async function clearAttempts(ip) {
+  await pool.query('DELETE FROM login_attempts WHERE ip = $1', [ip]);
 }
 
 function generateToken() {
@@ -554,6 +580,7 @@ function generateToken() {
 }
 
 function verifyToken(token) {
+  if (!TOKEN_SECRET) return false;
   if (!token || typeof token !== 'string') return false;
   const parts = token.split('.');
   if (parts.length !== 2) return false;
@@ -579,11 +606,15 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-app.post('/api/admin/login', (req, res) => {
-  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+app.post('/api/admin/login', async (req, res) => {
+  if (!ADMIN_PASSWORD || !TOKEN_SECRET) {
+    return res.status(500).json({ error: 'Admin login not configured. Set ADMIN_PASSWORD and TOKEN_SECRET env vars.' });
+  }
+
+  const ip = clientIp(req);
 
   // Check rate limit
-  if (!checkRateLimit(ip)) {
+  if (!(await checkRateLimit(ip))) {
     return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
   }
 
@@ -591,7 +622,7 @@ app.post('/api/admin/login', (req, res) => {
 
   // Validate input
   if (typeof password !== 'string' || password.length > 100) {
-    recordFailedAttempt(ip);
+    await recordFailedAttempt(ip);
     return res.status(401).json({ error: 'Wrong password' });
   }
 
@@ -600,26 +631,21 @@ app.post('/api/admin/login', (req, res) => {
     crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD));
 
   if (match) {
-    clearAttempts(ip);
+    await clearAttempts(ip);
     const token = generateToken();
     res.json({ success: true, token });
   } else {
-    recordFailedAttempt(ip);
+    await recordFailedAttempt(ip);
     res.status(401).json({ error: 'Wrong password' });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 
-// For local development
+// For local development (on Vercel, initDb runs via the middleware above)
 if (process.env.NODE_ENV !== 'production') {
-  initDb().then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }).catch(err => {
-    console.error('Failed to initialize database:', err);
-    process.exit(1);
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

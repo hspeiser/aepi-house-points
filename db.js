@@ -10,13 +10,20 @@ async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS members (
       id SERIAL PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL
+      name TEXT UNIQUE NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT TRUE
     );
 
     CREATE TABLE IF NOT EXISTS categories (
       id SERIAL PRIMARY KEY,
       name TEXT UNIQUE NOT NULL,
       default_points INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS login_attempts (
+      ip TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      first_attempt TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS requests (
@@ -33,6 +40,9 @@ async function initDb() {
       resolved_at TIMESTAMP
     );
   `);
+
+  // Migration for existing databases
+  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`);
 
   // Seed categories if empty
   const { rows } = await pool.query('SELECT COUNT(*) as count FROM categories');
