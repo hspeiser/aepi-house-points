@@ -44,6 +44,15 @@ async function initDb() {
   // Migration for existing databases
   await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`);
 
+  // Enable RLS with no policies: blocks Supabase's auto-generated REST API (PostgREST)
+  // from touching these tables. Our server connects as the table owner, which bypasses RLS.
+  await pool.query(`
+    ALTER TABLE members ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE requests ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
+  `);
+
   // Seed categories if empty
   const { rows } = await pool.query('SELECT COUNT(*) as count FROM categories');
   if (parseInt(rows[0].count) === 0) {
