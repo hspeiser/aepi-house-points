@@ -1,5 +1,6 @@
 const express = require('express');
 const { pool, initDb } = require('./db');
+const { put, list, del, get } = require('@vercel/blob');
 const path = require('path');
 
 const app = express();
@@ -41,6 +42,61 @@ app.get('/api/members', async (req, res) => {
   res.json(result.rows);
 });
 
+// "Did you mean…?" matching for names that aren't an exact hit
+const NICKNAMES = {
+  jake: 'jacob', jay: 'jacob', mike: 'michael', mikey: 'michael', ben: 'benjamin', benji: 'benjamin',
+  danny: 'daniel', dan: 'daniel', dave: 'david', davey: 'david', ed: 'edward', eddie: 'edward',
+  andy: 'andrew', drew: 'andrew', nate: 'nathan', zach: 'zachary', zack: 'zachary', sam: 'samuel',
+  josh: 'joshua', matt: 'matthew', alex: 'alexander', nick: 'nicholas', will: 'william', bill: 'william',
+  bob: 'robert', rob: 'robert', bobby: 'robert', tom: 'thomas', tommy: 'thomas', jon: 'jonathan',
+  johnny: 'john', chris: 'christopher', tony: 'anthony', joe: 'joseph', joey: 'joseph', max: 'maxwell',
+  gabe: 'gabriel', abe: 'abraham', izzy: 'isaac', ike: 'isaac', eli: 'elijah', ari: 'ariel',
+  pat: 'patrick', jim: 'james', jimmy: 'james', steve: 'steven', ricky: 'richard', rick: 'richard'
+};
+
+function levenshtein(a, b) {
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+// Similarity of two single name parts, 0..1 (nicknames and prefixes count as strong matches)
+function tokenScore(typed, actual) {
+  if (typed === actual) return 1;
+  const canonTyped = NICKNAMES[typed] || typed;
+  const canonActual = NICKNAMES[actual] || actual;
+  if (canonTyped === canonActual) return 0.95;
+  if (typed.length >= 3 && actual.startsWith(typed)) return 0.85;
+  const dist = levenshtein(typed, actual);
+  return Math.max(0, 1 - dist / Math.max(typed.length, actual.length));
+}
+
+function suggestMembers(input, members) {
+  const typedParts = input.toLowerCase().replace(/[^a-z\s'-]/g, '').split(/\s+/).filter(Boolean);
+  if (typedParts.length === 0) return [];
+
+  const scored = members.map(m => {
+    const parts = m.name.toLowerCase().split(/\s+/);
+    // Each typed word matches its best word in the member's name
+    const total = typedParts.reduce((sum, t) => sum + Math.max(...parts.map(p => tokenScore(t, p))), 0);
+    return { id: m.id, name: m.name, score: total / typedParts.length };
+  });
+
+  return scored
+    .filter(s => s.score >= 0.6)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ id, name }) => ({ id, name }));
+}
+
 // Look up member by name (creation is admin-only via /api/admin/members)
 app.post('/api/members', async (req, res) => {
   const { name } = req.body;
@@ -52,7 +108,11 @@ app.post('/api/members', async (req, res) => {
   const result = await pool.query('SELECT * FROM members WHERE LOWER(name) = LOWER($1)', [trimmedName]);
 
   if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Name not found. Ask an admin to add you.' });
+    const active = await pool.query('SELECT id, name FROM members WHERE active = TRUE');
+    return res.status(404).json({
+      error: 'Name not found. Ask an admin to add you.',
+      suggestions: suggestMembers(trimmedName, active.rows)
+    });
   }
   if (!result.rows[0].active) {
     return res.status(403).json({ error: 'This member was removed. Ask an admin to re-add you.' });
@@ -541,6 +601,101 @@ app.get('/api/export/csv', requireAdmin, async (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename=aepi-house-points-backup-' + new Date().toISOString().split('T')[0] + '.csv');
   res.send(csv);
+});
+
+// Backups — full JSON snapshots of the database in a private Vercel Blob store
+const BACKUP_PREFIX = 'backups/';
+const BACKUP_RETENTION_DAYS = 365;
+
+async function runBackup(trigger) {
+  const [members, categories, requests] = await Promise.all([
+    pool.query('SELECT * FROM members ORDER BY id'),
+    pool.query('SELECT * FROM categories ORDER BY id'),
+    // Timestamps as text: the columns have no time zone, so this round-trips exactly on restore
+    pool.query(`
+      SELECT id, member_id, category_id, custom_category, requested_points, explanation, status,
+             approved_points, admin_note, created_at::text AS created_at, resolved_at::text AS resolved_at
+      FROM requests ORDER BY id
+    `)
+  ]);
+
+  const snapshot = {
+    version: 1,
+    created_at: new Date().toISOString(),
+    trigger,
+    counts: {
+      members: members.rows.length,
+      categories: categories.rows.length,
+      requests: requests.rows.length
+    },
+    members: members.rows,
+    categories: categories.rows,
+    requests: requests.rows
+  };
+
+  const pathname = `${BACKUP_PREFIX}aepi-backup-${snapshot.created_at.replace(/[:.]/g, '-')}.json`;
+  const blob = await put(pathname, JSON.stringify(snapshot), {
+    access: 'private',
+    contentType: 'application/json'
+  });
+
+  // Prune backups past the retention window
+  const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const { blobs } = await list({ prefix: BACKUP_PREFIX, limit: 1000 });
+  const expired = blobs.filter(b => new Date(b.uploadedAt).getTime() < cutoff).map(b => b.url);
+  if (expired.length > 0) await del(expired);
+
+  return { pathname: blob.pathname, counts: snapshot.counts, pruned: expired.length };
+}
+
+// Daily backup — called by Vercel Cron, which sends "Authorization: Bearer $CRON_SECRET"
+app.get('/api/cron/backup', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.authorization || '';
+  const expected = `Bearer ${secret}`;
+  if (!secret || auth.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    res.json(await runBackup('cron'));
+  } catch (err) {
+    console.error('Backup failed:', err);
+    res.status(500).json({ error: 'Backup failed', detail: err.message });
+  }
+});
+
+// List backups (admin)
+app.get('/api/admin/backups', requireAdmin, async (req, res) => {
+  const { blobs } = await list({ prefix: BACKUP_PREFIX, limit: 1000 });
+  blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+  res.json(blobs.map(b => ({ pathname: b.pathname, size: b.size, uploadedAt: b.uploadedAt })));
+});
+
+// Run a backup now (admin)
+app.post('/api/admin/backups', requireAdmin, async (req, res) => {
+  try {
+    res.json(await runBackup('manual'));
+  } catch (err) {
+    console.error('Backup failed:', err);
+    res.status(500).json({ error: 'Backup failed', detail: err.message });
+  }
+});
+
+// Download one backup (admin)
+app.get('/api/admin/backups/download', requireAdmin, async (req, res) => {
+  const { pathname } = req.query;
+  if (typeof pathname !== 'string' || !pathname.startsWith(BACKUP_PREFIX) || pathname.includes('..')) {
+    return res.status(400).json({ error: 'Invalid backup' });
+  }
+  const result = await get(pathname, { access: 'private', useCache: false });
+  if (!result || result.statusCode !== 200) {
+    return res.status(404).json({ error: 'Backup not found' });
+  }
+  const body = Buffer.from(await new Response(result.stream).arrayBuffer());
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${pathname.slice(BACKUP_PREFIX.length)}"`);
+  res.send(body);
 });
 
 // Admin auth

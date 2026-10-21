@@ -100,6 +100,12 @@
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
     .suggestion-item:hover { background: rgba(255,255,255,0.1); }
+    .suggestion-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center; }
+    .suggestion-btn {
+      padding: 8px 14px; border: 1px solid rgba(255,255,255,0.35); border-radius: 999px;
+      background: rgba(255,255,255,0.12); color: #fff; font-size: 14px; cursor: pointer;
+    }
+    .suggestion-btn:hover { background: rgba(255,255,255,0.25); }
   </style>
 </head>
 <body>
@@ -240,6 +246,33 @@
       }
     }
 
+    function showNameError(message, data) {
+      const suggestions = data.suggestions || [];
+      message.className = 'message error';
+      message.textContent = '';
+      if (suggestions.length === 0) {
+        message.textContent = data.error || 'Name not found. Ask an admin to add you.';
+        return;
+      }
+      message.append('Name not found. Did you mean:');
+      const row = document.createElement('div');
+      row.className = 'suggestion-row';
+      suggestions.forEach(s => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'suggestion-btn';
+        btn.textContent = s.name;
+        btn.onclick = () => {
+          nameInput.value = s.name;
+          selectedMemberId = s.id;
+          message.className = 'message success';
+          message.textContent = `Got it, ${s.name}. Hit Submit again to send your request.`;
+        };
+        row.appendChild(btn);
+      });
+      message.appendChild(row);
+    }
+
     // Form submit
     document.getElementById('pointsForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -262,8 +295,7 @@
         });
         const member = await memberRes.json();
         if (!memberRes.ok) {
-          message.textContent = member.error || 'Name not found. Ask an admin to add you.';
-          message.className = 'message error';
+          showNameError(message, member);
           return;
         }
         selectedMemberId = member.id;

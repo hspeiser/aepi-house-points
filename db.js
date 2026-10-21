@@ -1,13 +1,15 @@
 const { Pool } = require('pg');
 
+const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL || '');
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: isLocalDb ? false : { rejectUnauthorized: false }
 });
 
 // Initialize tables
-async function initDb() {
-  await pool.query(`
+async function initDb(db = pool, { seed = true } = {}) {
+  await db.query(`
     CREATE TABLE IF NOT EXISTS members (
       id SERIAL PRIMARY KEY,
       name TEXT UNIQUE NOT NULL,
@@ -42,19 +44,21 @@ async function initDb() {
   `);
 
   // Migration for existing databases
-  await pool.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`);
+  await db.query(`ALTER TABLE members ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE`);
 
   // Enable RLS with no policies: blocks Supabase's auto-generated REST API (PostgREST)
   // from touching these tables. Our server connects as the table owner, which bypasses RLS.
-  await pool.query(`
+  await db.query(`
     ALTER TABLE members ENABLE ROW LEVEL SECURITY;
     ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
     ALTER TABLE requests ENABLE ROW LEVEL SECURITY;
     ALTER TABLE login_attempts ENABLE ROW LEVEL SECURITY;
   `);
 
+  if (!seed) return;
+
   // Seed categories if empty
-  const { rows } = await pool.query('SELECT COUNT(*) as count FROM categories');
+  const { rows } = await db.query('SELECT COUNT(*) as count FROM categories');
   if (parseInt(rows[0].count) === 0) {
     const categories = [
       ['Chapter Meeting', 10],
@@ -69,12 +73,12 @@ async function initDb() {
       ['DJ Learning Session', 10],
     ];
     for (const [name, points] of categories) {
-      await pool.query('INSERT INTO categories (name, default_points) VALUES ($1, $2)', [name, points]);
+      await db.query('INSERT INTO categories (name, default_points) VALUES ($1, $2)', [name, points]);
     }
   }
 
   // Seed members if empty
-  const membersResult = await pool.query('SELECT COUNT(*) as count FROM members');
+  const membersResult = await db.query('SELECT COUNT(*) as count FROM members');
   if (parseInt(membersResult.rows[0].count) === 0) {
     const members = [
       'Dylan Goldman', 'Nevan Hanford', 'Michael Dunn', 'Eddie Maxwell',
@@ -89,7 +93,7 @@ async function initDb() {
       'Spencer Lee', 'Adam Faradjev'
     ];
     for (const name of members) {
-      await pool.query('INSERT INTO members (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]);
+      await db.query('INSERT INTO members (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]);
     }
   }
 

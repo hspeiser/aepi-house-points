@@ -4,6 +4,10 @@
     {
       "path": "/api/ping",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/backup",
+      "schedule": "0 9 * * *"
     }
   ],
   "builds": [

@@ -426,7 +426,7 @@
       <button class="tab" onclick="showTab('positions')" id="tab-positions">Position Points</button>
       <button class="tab" onclick="showTab('members')" id="tab-members">Members <span class="tab-count" id="members-count">0</span></button>
       <button class="tab" onclick="showTab('analytics')" id="tab-analytics">Analytics</button>
-      <a href="#" onclick="exportCsv(); return false;" class="tab" style="text-decoration:none;text-align:center;">Export CSV</a>
+      <button class="tab" onclick="showTab('backups')" id="tab-backups">Backups</button>
     </div>
 
     <div id="pending-section" class="section active">
@@ -526,6 +526,21 @@
         <input type="text" id="members-filter" placeholder="Filter by name..." oninput="filterMembersList()">
       </div>
       <div id="members-list"></div>
+    </div>
+
+    <div id="backups-section" class="section">
+      <div class="card">
+        <h2 class="section-title">Backups</h2>
+        <p style="color:rgba(255,255,255,0.6);font-size:14px;margin-bottom:15px;">
+          A full copy of every member, category and request is saved automatically every day and kept for a year.
+        </p>
+        <div class="form-row">
+          <button class="btn btn-approve" id="backup-now-btn" onclick="backupNow()" style="flex:1">Back Up Now</button>
+          <button class="btn btn-custom" onclick="exportCsv()" style="flex:1">Export CSV</button>
+        </div>
+        <div id="backup-status" style="margin-top:12px;font-size:14px;color:rgba(255,255,255,0.7);"></div>
+      </div>
+      <div id="backups-list"></div>
     </div>
 
     <div id="analytics-section" class="section">
@@ -729,6 +744,82 @@
       document.getElementById(`tab-${tab}`).classList.add('active');
       document.getElementById(`${tab}-section`).classList.add('active');
       if (tab === 'analytics') loadAnalytics();
+      if (tab === 'backups') loadBackups();
+    }
+
+    async function loadBackups() {
+      const container = document.getElementById('backups-list');
+      container.innerHTML = '<div class="card empty-state"><h2>Loading backups...</h2></div>';
+      try {
+        const res = await fetch('/api/admin/backups', { headers: adminHeaders() });
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          location.reload();
+          return;
+        }
+        if (!res.ok) throw new Error('Failed to load backups');
+        const backups = await res.json();
+        if (backups.length === 0) {
+          container.innerHTML = '<div class="card empty-state"><h2>No backups yet</h2><p>The first daily backup will appear here, or hit Back Up Now.</p></div>';
+          return;
+        }
+        container.innerHTML = '';
+        backups.forEach(b => {
+          const row = document.createElement('div');
+          row.className = 'card';
+          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:10px;';
+          const info = document.createElement('div');
+          info.innerHTML = `<div class="member-name">${escapeHtml(new Date(b.uploadedAt).toLocaleString())}</div>` +
+            `<div class="timestamp">${(b.size / 1024).toFixed(1)} KB</div>`;
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-custom btn-small';
+          btn.textContent = 'Download';
+          btn.onclick = () => downloadBackup(b.pathname);
+          row.append(info, btn);
+          container.appendChild(row);
+        });
+      } catch (e) {
+        container.innerHTML = '<div class="card empty-state"><h2>Failed to load backups</h2></div>';
+        console.error(e);
+      }
+    }
+
+    async function backupNow() {
+      const btn = document.getElementById('backup-now-btn');
+      const status = document.getElementById('backup-status');
+      btn.disabled = true;
+      status.textContent = 'Backing up...';
+      try {
+        const res = await fetch('/api/admin/backups', { method: 'POST', headers: adminHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.error || 'Backup failed');
+        status.textContent = `Saved: ${data.counts.members} members, ${data.counts.requests} requests.`;
+        loadBackups();
+      } catch (e) {
+        status.textContent = 'Backup failed: ' + e.message;
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function downloadBackup(pathname) {
+      try {
+        const res = await fetch('/api/admin/backups/download?pathname=' + encodeURIComponent(pathname), { headers: adminHeaders() });
+        if (!res.ok) throw new Error('Download failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = pathname.split('/').pop();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('Download failed');
+        console.error(e);
+      }
     }
 
     async function loadApproved() {
