@@ -384,172 +384,26 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(rows);
 });
 
-// Analytics (admin)
-app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
-  try {
-    // Headline numbers
-    const totals = await pool.query(`
-      SELECT
-        (SELECT COUNT(*) FROM members WHERE active = TRUE) AS member_count,
-        (SELECT COUNT(*) FROM requests) AS total_requests,
-        (SELECT COUNT(*) FROM requests WHERE status = 'pending') AS pending_count,
-        (SELECT COUNT(*) FROM requests WHERE status = 'approved') AS approved_count,
-        (SELECT COUNT(*) FROM requests WHERE status = 'denied') AS denied_count,
-        (SELECT COALESCE(SUM(approved_points),0) FROM requests WHERE status = 'approved') AS total_points_awarded,
-        (SELECT COALESCE(AVG(approved_points),0) FROM requests WHERE status = 'approved') AS avg_points_per_approval,
-        (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))),0)
-           FROM requests WHERE resolved_at IS NOT NULL AND created_at IS NOT NULL) AS avg_decision_seconds
-    `);
-
-    // Points awarded per day (last 60 days)
-    const perDay = await pool.query(`
-      SELECT to_char(date_trunc('day', resolved_at), 'YYYY-MM-DD') AS day,
-             SUM(approved_points)::int AS points,
-             COUNT(*)::int AS approvals
-      FROM requests
-      WHERE status = 'approved' AND resolved_at >= NOW() - INTERVAL '60 days'
-      GROUP BY 1
-      ORDER BY 1
-    `);
-
-    // Requests submitted per day (last 60 days)
-    const submittedPerDay = await pool.query(`
-      SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
-             COUNT(*)::int AS submissions
-      FROM requests
-      WHERE created_at >= NOW() - INTERVAL '60 days'
-      GROUP BY 1
-      ORDER BY 1
-    `);
-
-    // Top members by points
-    const topMembers = await pool.query(`
-      SELECT m.name,
-             COALESCE(SUM(r.approved_points),0)::int AS points,
-             COUNT(r.id) FILTER (WHERE r.status = 'approved')::int AS approvals
-      FROM members m
-      LEFT JOIN requests r ON r.member_id = m.id AND r.status = 'approved'
-      WHERE m.active = TRUE
-      GROUP BY m.id, m.name
-      ORDER BY points DESC
-      LIMIT 15
-    `);
-
-    // Members with zero points
-    const zeroPointMembers = await pool.query(`
-      SELECT m.name
-      FROM members m
-      LEFT JOIN requests r ON r.member_id = m.id AND r.status = 'approved'
-      WHERE m.active = TRUE
-      GROUP BY m.id, m.name
-      HAVING COALESCE(SUM(r.approved_points),0) = 0
-      ORDER BY m.name
-    `);
-
-    // Category breakdown of approved points
-    const byCategory = await pool.query(`
-      SELECT COALESCE(c.name, r.custom_category, 'Other') AS category,
-             SUM(r.approved_points)::int AS points,
-             COUNT(*)::int AS count
+// Analytics data (admin) — raw rows; the analytics page does all slicing client-side
+app.get('/api/admin/analytics/data', requireAdmin, async (req, res) => {
+  const [members, categories, requests] = await Promise.all([
+    pool.query('SELECT id, name, active FROM members ORDER BY name'),
+    pool.query('SELECT id, name, default_points FROM categories ORDER BY id'),
+    pool.query(`
+      SELECT r.id, r.member_id, COALESCE(c.name, r.custom_category, 'Other') AS category,
+             (r.category_id IS NULL) AS is_custom, r.status, r.requested_points, r.approved_points,
+             r.explanation, r.admin_note, r.created_at, r.resolved_at
       FROM requests r
       LEFT JOIN categories c ON c.id = r.category_id
-      WHERE r.status = 'approved'
-      GROUP BY 1
-      ORDER BY points DESC
-    `);
-
-    // Status distribution
-    const statusBreakdown = await pool.query(`
-      SELECT status, COUNT(*)::int AS count
-      FROM requests
-      GROUP BY status
-    `);
-
-    // Hour-of-day distribution of submissions
-    const hourly = await pool.query(`
-      SELECT EXTRACT(HOUR FROM created_at)::int AS hour, COUNT(*)::int AS count
-      FROM requests
-      GROUP BY hour
-      ORDER BY hour
-    `);
-
-    // Day-of-week distribution of submissions (0=Sun .. 6=Sat)
-    const weekday = await pool.query(`
-      SELECT EXTRACT(DOW FROM created_at)::int AS dow, COUNT(*)::int AS count
-      FROM requests
-      GROUP BY dow
-      ORDER BY dow
-    `);
-
-    // Approval rate by member (members with at least 1 resolved request)
-    const approvalRate = await pool.query(`
-      SELECT m.name,
-             COUNT(*) FILTER (WHERE r.status = 'approved')::int AS approved,
-             COUNT(*) FILTER (WHERE r.status = 'denied')::int AS denied,
-             COUNT(*) FILTER (WHERE r.status IN ('approved','denied'))::int AS resolved
-      FROM members m
-      JOIN requests r ON r.member_id = m.id
-      WHERE m.active = TRUE AND r.status IN ('approved','denied')
-      GROUP BY m.id, m.name
-      HAVING COUNT(*) FILTER (WHERE r.status IN ('approved','denied')) >= 3
-      ORDER BY (COUNT(*) FILTER (WHERE r.status = 'approved'))::float
-               / NULLIF(COUNT(*) FILTER (WHERE r.status IN ('approved','denied')), 0) DESC
-      LIMIT 15
-    `);
-
-    // Top categories by request volume
-    const topCategoryVolume = await pool.query(`
-      SELECT COALESCE(c.name, r.custom_category, 'Other') AS category,
-             COUNT(*)::int AS count
-      FROM requests r
-      LEFT JOIN categories c ON c.id = r.category_id
-      GROUP BY 1
-      ORDER BY count DESC
-      LIMIT 10
-    `);
-
-    // Cumulative points over time (last 60 days)
-    const cumulative = await pool.query(`
-      WITH days AS (
-        SELECT generate_series(
-          (CURRENT_DATE - INTERVAL '59 days')::date,
-          CURRENT_DATE::date,
-          '1 day'
-        )::date AS day
-      ),
-      daily AS (
-        SELECT d.day,
-               COALESCE(SUM(r.approved_points), 0)::int AS pts
-        FROM days d
-        LEFT JOIN requests r
-          ON date_trunc('day', r.resolved_at)::date = d.day
-         AND r.status = 'approved'
-        GROUP BY d.day
-      )
-      SELECT to_char(day, 'YYYY-MM-DD') AS day,
-             SUM(pts) OVER (ORDER BY day)::int AS cumulative
-      FROM daily
-      ORDER BY day
-    `);
-
-    res.json({
-      totals: totals.rows[0],
-      pointsPerDay: perDay.rows,
-      submittedPerDay: submittedPerDay.rows,
-      topMembers: topMembers.rows,
-      zeroPointMembers: zeroPointMembers.rows,
-      byCategory: byCategory.rows,
-      statusBreakdown: statusBreakdown.rows,
-      hourly: hourly.rows,
-      weekday: weekday.rows,
-      approvalRate: approvalRate.rows,
-      topCategoryVolume: topCategoryVolume.rows,
-      cumulative: cumulative.rows
-    });
-  } catch (err) {
-    console.error('Analytics error:', err);
-    res.status(500).json({ error: 'Failed to load analytics', detail: err.message });
-  }
+      ORDER BY r.created_at
+    `)
+  ]);
+  res.json({
+    generated_at: new Date().toISOString(),
+    members: members.rows,
+    categories: categories.rows,
+    requests: requests.rows
+  });
 });
 
 // CSV Export (admin)

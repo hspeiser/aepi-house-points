@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics - AEPi House Points</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --page: #1b2034;
+      --surface: rgba(255,255,255,0.07);
+      --surface-solid: #242a40;
+      --surface-raised: #2c3350;
+      --ink: #f0efec;
+      --ink-2: rgba(255,255,255,0.72);
+      --ink-3: rgba(255,255,255,0.5);
+      --hairline: rgba(255,255,255,0.08);
+      --hairline-2: rgba(255,255,255,0.16);
+      --accent: #4ade80;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+      --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+      --up: #0ca30c;
+      --down: #e66767;
+    }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      background-attachment: fixed;
+      min-height: 100vh;
+      color: var(--ink);
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+    .nav { display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+    .nav a {
+      color: #fff; text-decoration: none; padding: 10px 20px;
+      background: rgba(255,255,255,0.1); border-radius: 8px; transition: background 0.2s;
+    }
+    .nav a:hover, .nav a.active { background: rgba(255,255,255,0.2); }
+    .page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    h1 { font-size: 1.8em; }
+    .updated { color: var(--ink-3); font-size: 13px; }
+    button { font: inherit; color: inherit; }
+
+    /* Filter bar */
+    .filters {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      padding: 10px; margin: 0 -10px 10px;
+      background: rgba(24,30,52,0.92); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; background: var(--surface); border-radius: 9px; padding: 3px; gap: 2px; }
+    @media (max-width: 600px) {
+      .filters { position: static; }
+      .seg button { padding: 6px 9px; }
+      .kpi-delta { font-size: 11px; }
+    }
+    .seg button {
+      border: none; background: transparent; padding: 6px 11px; border-radius: 7px;
+      cursor: pointer; font-size: 13px; color: var(--ink-2); white-space: nowrap;
+    }
+    .seg button:hover { background: rgba(255,255,255,0.06); color: var(--ink); }
+    .seg button.on { background: rgba(255,255,255,0.18); color: var(--ink); font-weight: 600; }
+    .ctl {
+      border: 1px solid var(--hairline-2); background: var(--surface); border-radius: 9px;
+      padding: 7px 12px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      color: var(--ink);
+    }
+    .ctl:hover { background: rgba(255,255,255,0.12); }
+    .ctl .caret { color: var(--ink-3); font-size: 10px; }
+    .ctl.active { border-color: rgba(74,222,128,0.6); }
+    .custom-dates { display: none; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
+    .custom-dates.show { display: inline-flex; }
+    input[type="date"], input[type="search"], select {
+      background: var(--surface-solid); color: var(--ink); border: 1px solid var(--hairline-2);
+      border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; color-scheme: dark;
+    }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); cursor: pointer; user-select: none; }
+    .toggle input { accent-color: #4ade80; }
+    .link-btn { border: none; background: none; color: var(--ink-3); font-size: 13px; cursor: pointer; text-decoration: underline; }
+    .link-btn:hover { color: var(--ink); }
+    .spacer { flex: 1; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; min-height: 0; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+      background: rgba(74,222,128,0.14); border: 1px solid rgba(74,222,128,0.35); color: var(--ink);
+      padding: 4px 6px 4px 10px; border-radius: 999px;
+    }
+    .chip button { border: none; background: rgba(255,255,255,0.12); width: 18px; height: 18px; border-radius: 50%; cursor: pointer; line-height: 1; font-size: 12px; }
+    .chip button:hover { background: rgba(255,255,255,0.3); }
+
+    /* Popover multi-select */
+    .pop-wrap { position: relative; }
+    .popover {
+      display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+      width: 280px; max-width: calc(100vw - 32px); background: var(--surface-raised);
+      border: 1px solid var(--hairline-2); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+      padding: 10px;
+    }
+    .popover.open { display: block; }
+    .popover input[type="search"] { width: 100%; margin-bottom: 8px; }
+    .pop-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; }
+    .pop-item { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .pop-item:hover { background: rgba(255,255,255,0.07); }
+    .pop-item input { accent-color: #4ade80; }
+    .pop-item .sub { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 12px; }
+    .pop-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hairline); }
+
+    /* KPIs */
+    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 14px; }
+    @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi { background: var(--surface); border-radius: 14px; padding: 14px; }
+    .kpi-label { font-size: 12px; color: var(--ink-2); }
+    .kpi-value { font-size: 1.7em; font-weight: 700; margin-top: 4px; line-height: 1.1; }
+    .kpi-delta { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+    .kpi-delta .up { color: var(--up); font-weight: 600; }
+    .kpi-delta .down { color: var(--down); font-weight: 600; }
+
+    /* Cards */
+    .card { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 14px; min-width: 0; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .card-title { font-size: 1em; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .card-title::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
+    .card-sub { font-size: 12px; color: var(--ink-3); margin-top: -6px; margin-bottom: 12px; }
+    .card-ctls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 860px) { .grid-2 { grid-template-columns: 1fr; } }
+    .chart-box { position: relative; height: 320px; }
+    .stale { opacity: 0.55; transition: opacity 0.15s; }
+
+    /* Legend */
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .legend-item:hover { color: var(--ink); }
+    .legend-key { width: 14px; height: 2px; border-radius: 1px; }
+
+    /* Bar list */
+    .bars { display: flex; flex-direction: column; gap: 2px; }
+    .bar-row {
+      display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; gap: 10px; align-items: center;
+      padding: 5px 6px; border-radius: 6px; font-size: 13px;
+    }
+    .bar-row.clickable { cursor: pointer; }
+    .bar-row.clickable:hover, .bar-row:focus-visible { background: rgba(255,255,255,0.06); outline: none; }
+    .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+    .bar-track { height: 14px; position: relative; }
+    .bar-fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .bar-row:hover .bar-fill { filter: brightness(1.2); }
+    .bar-val { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+    .bar-val .muted { color: var(--ink-3); font-size: 11px; margin-left: 6px; }
+    .more-btn { margin-top: 8px; }
+
+    /* Heatmap */
+    .heat-scroll { overflow-x: auto; }
+    .heat { display: grid; gap: 2px; font-size: 12px; min-width: 560px; }
+    .heat-colhead {
+      color: var(--ink-3); font-size: 11px; line-height: 1.25; text-align: center; align-self: end;
+      padding: 0 2px 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .heat-rowhead { color: var(--ink-2); padding-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; cursor: pointer; }
+    .heat-rowhead:hover { color: var(--ink); }
+    .heat-cell {
+      height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      font-variant-numeric: tabular-nums; font-size: 11px; cursor: pointer; background: rgba(255,255,255,0.03);
+    }
+    .heat-cell:hover, .heat-cell:focus-visible { outline: 2px solid #fff; outline-offset: -1px; }
+    .heat-cell.zero { cursor: default; color: transparent; }
+    .heat-cell.zero:hover { outline: none; }
+    .heat-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); margin-top: 10px; }
+    .heat-legend span.sw { width: 22px; height: 10px; border-radius: 2px; display: inline-block; }
+
+    /* Lists */
+    .list { display: flex; flex-direction: column; }
+    .list-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 6px; border-radius: 6px; font-size: 13px; border-bottom: 1px solid var(--hairline); }
+    .list-row:last-child { border-bottom: none; }
+    .list-row.clickable { cursor: pointer; }
+    .list-row.clickable:hover { background: rgba(255,255,255,0.06); }
+    .list-row .r { color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .list-empty { color: var(--ink-3); font-size: 13px; padding: 6px; }
+    .list-group-title { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; margin: 4px 0 6px; }
+    .up-txt { color: var(--up); font-weight: 600; }
+
+    /* Spotlight */
+    .spot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    @media (max-width: 700px) { .spot { grid-template-columns: repeat(2, 1fr); } }
+    .spot-item { background: rgba(255,255,255,0.05); border-radius: 10px; padding: 12px; }
+    .spot-item .v { font-size: 1.35em; font-weight: 700; margin-top: 2px; }
+    .spot-item .l { font-size: 12px; color: var(--ink-2); }
+
+    /* Table */
+    .table-ctls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+    th { color: var(--ink-3); font-weight: 600; font-size: 12px; cursor: pointer; white-space: nowrap; user-select: none; }
+    th:hover { color: var(--ink); }
+    th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.notes { color: var(--ink-2); max-width: 320px; }
+    td.date { white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .status { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .status-approved { background: rgba(12,163,12,0.2); color: #6ee06e; }
+    .status-pending { background: rgba(250,178,25,0.18); color: #fac35a; }
+    .status-denied { background: rgba(208,59,59,0.22); color: #f08a8a; }
+    .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-3); }
+    .pager .ctl { padding: 5px 10px; }
+    .ctl:disabled { opacity: 0.4; cursor: default; }
+
+    .data-table { margin-top: 12px; display: none; }
+    .data-table.show { display: block; }
+
+    /* Tooltip */
+    .tip {
+      position: fixed; z-index: 50; pointer-events: none; display: none;
+      background: #10142a; border: 1px solid var(--hairline-2); border-radius: 8px;
+      padding: 8px 10px; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: 260px;
+    }
+    .tip .tv { font-weight: 700; font-size: 14px; }
+    .tip .tl { color: var(--ink-2); }
+
+    .state { text-align: center; padding: 60px 20px; color: var(--ink-2); }
+    .state a { color: var(--accent); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="nav">
+      <a href="/">Submit</a>
+      <a href="/recents.html">Recents</a>
+      <a href="/lookup.html">Lookup</a>
+      <a href="/admin.html">Admin</a>
+      <a href="/analytics.html" class="active">Analytics</a>
+    </nav>
+
+    <div class="page-head">
+      <h1>Analytics</h1>
+      <span class="updated" id="updated"></span>
+    </div>
+
+    <div id="state" class="state">Loading data…</div>
+
+    <div id="app" class="hidden">
+      <div class="filters" id="filters">
+        <div class="seg" id="range-seg">
+          <button data-range="7d">7D</button>
+          <button data-range="30d">30D</button>
+          <button data-range="90d">90D</button>
+          <button data-range="sem">Semester</button>
+          <button data-range="all">All time</button>
+          <button data-range="custom">Custom</button>
+        </div>
+        <span class="custom-dates" id="custom-dates">
+          <input type="date" id="date-from" aria-label="From date"> to <input type="date" id="date-to" aria-label="To date">
+        </span>
+        <div class="pop-wrap">
+          <button class="ctl" id="members-btn"><span id="members-btn-label">All brothers</span><span class="caret">▼</span></button>
+          <div class="popover" id="members-pop">
+            <input type="search" id="members-search" placeholder="Search brothers…">
+            <div class="pop-list" id="members-list"></div>
+            <div class="pop-foot"><button class="link-btn" data-clear="members">Clear</button><button class="link-btn" data-close>Done</button></div>
+          </div>
+        </div>
+        <div class="pop-wrap">
+          <button class="ctl" id="cats-btn"><span id="cats-btn-label">All categories</span><span class="caret">▼</span></button>
+          <div class="popover" id="cats-pop">
+            <input type="search" id="cats-search" placeholder="Search categories…">
+            <div class="pop-list" id="cats-list"></div>
+            <div class="pop-foot"><button class="link-btn" data-clear="cats">Clear</button><button class="link-btn" data-close>Done</button></div>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="removed-toggle"> Include removed</label>
+        <span class="spacer"></span>
+        <button class="link-btn" id="reset-btn">Reset</button>
+      </div>
+
+      <div class="chips" id="chips"></div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="card hidden" id="spotlight-card">
+        <div class="card-head"><div class="card-title" id="spotlight-title">Spotlight</div></div>
+        <div class="spot" id="spotlight"></div>
+      </div>
+
+      <div class="card" id="trend-card">
+        <div class="card-head">
+          <div class="card-title">Points over time</div>
+          <div class="card-ctls">
+            <div class="seg" id="trend-series">
+              <button data-v="house">House total</button>
+              <button data-v="top5">Top 5</button>
+              <button data-v="top8">Top 8</button>
+              <button data-v="selected" id="trend-selected-btn">Selected</button>
+            </div>
+            <div class="seg" id="trend-mode">
+              <button data-v="cum">Cumulative</button>
+              <button data-v="per">Per period</button>
+            </div>
+            <select id="trend-gran" aria-label="Time grouping">
+              <option value="auto">Auto</option>
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+            <button class="link-btn" id="trend-table-btn">Table</button>
+          </div>
+        </div>
+        <div class="card-sub" id="trend-sub"></div>
+        <div class="chart-box"><canvas id="trend-chart"></canvas></div>
+        <div class="legend" id="trend-legend"></div>
+        <div class="data-table table-scroll" id="trend-table"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Breakdown</div>
+            <div class="card-ctls">
+              <select id="bd-group" aria-label="Group by">
+                <option value="member">By brother</option>
+                <option value="category">By category</option>
+                <option value="weekday">By weekday</option>
+                <option value="hour">By hour of day</option>
+                <option value="month">By month</option>
+              </select>
+              <select id="bd-metric" aria-label="Metric">
+                <option value="points">Points</option>
+                <option value="requests">Approved requests</option>
+                <option value="avg">Avg points / request</option>
+                <option value="rate">Approval rate</option>
+                <option value="share">Share of house points</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-sub" id="bd-sub"></div>
+          <div class="bars" id="bd-bars"></div>
+          <button class="link-btn more-btn hidden" id="bd-more"></button>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="card-title">Needs attention</div></div>
+          <div class="card-sub">Based on the selected date range.</div>
+          <div id="attention"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Who does what</div>
+          <div class="card-ctls">
+            <select id="heat-metric" aria-label="Heatmap metric">
+              <option value="points">Points</option>
+              <option value="requests">Approved requests</option>
+            </select>
+            <button class="link-btn" id="heat-more"></button>
+          </div>
+        </div>
+        <div class="card-sub">Brothers × categories. Click a cell to filter to it, or a name to spotlight that brother.</div>
+        <div class="heat-scroll"><div class="heat" id="heat"></div></div>
+        <div class="heat-legend" id="heat-legend"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Requests</div>
+          <div class="card-ctls"><button class="ctl" id="export-btn">Export these to CSV</button></div>
+        </div>
+        <div class="table-ctls">
+          <input type="search" id="tbl-search" placeholder="Search notes, names, categories…" style="flex:1;min-width:180px;">
+          <div class="seg" id="tbl-status">
+            <button data-v="all">All</button>
+            <button data-v="approved">Approved</button>
+            <button data-v="pending">Pending</button>
+            <button data-v="denied">Denied</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="t">Date</th>
+                <th data-sort="member">Brother</th>
+                <th data-sort="category">Category</th>
+                <th data-sort="requested" class="num">Asked</th>
+                <th data-sort="awarded" class="num">Awarded</th>
+                <th data-sort="status">Status</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <span id="tbl-count"></span>
+          <span>
+            <button class="ctl" id="tbl-prev">‹ Prev</button>
+            <button class="ctl" id="tbl-next">Next ›</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+  (() => {
+    const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+    const HEAT_RAMP = ['#184f95', '#256abf', '#3987e5', '#6da7ec', '#9ec5f4'];
+    const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const DAY = 86400000;
+
+    const token = sessionStorage.getItem('adminToken');
+    const $ = id => document.getElementById(id);
+
+    // ---------- state ----------
+    let DATA = null;          // { members, categories, requests }
+    let memberById = new Map();
+    const defaults = {
+      range: '30d', from: '', to: '', members: [], cats: [], removed: false,
+      series: 'top5', mode: 'cum', gran: 'auto', group: 'member', metric: 'points', heat: 'points'
+    };
+    let S = { ...defaults };
+    const view = { bdAll: false, heatAll: false, tblSort: 't', tblDir: -1, tblPage: 0, tblStatus: 'all', tblSearch: '', trendTable: false };
+    const colorSlots = new Map(); // memberId -> slot index, stable while the member stays on the chart
+    let trendChart = null;
+
+    // ---------- helpers ----------
+    function el(tag, attrs = {}, ...kids) {
+      const n = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v == null || v === false) continue;
+        if (k === 'class') n.className = v;
+        else if (k === 'style') n.style.cssText = v;
+        else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+        else n.setAttribute(k, v === true ? '' : v);
+      }
+      for (const kid of kids.flat()) {
+        if (kid == null || kid === false) continue;
+        n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+      }
+      return n;
+    }
+    const fmt = n => Math.round(n).toLocaleString();
+    const fmt1 = n => (Math.round(n * 10) / 10).toLocaleString();
+    const pct = n => (n * 100).toFixed(n < 0.1 && n > 0 ? 1 : 0) + '%';
+    const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const startOfWeek = d => { const x = startOfDay(d); const dow = (x.getDay() + 6) % 7; return addDays(x, -dow); };
+    const startOfMonth = d => { const x = startOfDay(d); x.setDate(1); return x; };
+    const bucketStart = (d, g) => g === 'day' ? startOfDay(d) : g === 'week' ? startOfWeek(d) : startOfMonth(d);
+    const nextBucket = (d, g) => g === 'day' ? addDays(d, 1) : g === 'week' ? addDays(d, 7) : new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    const isoDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const parseIso = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+    const shortDate = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const longDate = d => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const bucketLabel = (d, g) => g === 'month' ? d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
+      : g === 'week' ? 'Wk of ' + shortDate(d) : shortDate(d);
+    const pts = r => r.status === 'approved' ? (Number(r.approved_points) || 0) : 0;
+    const memberName = id => memberById.get(id)?.name || 'Unknown';
+
+    // ---------- tooltip ----------
+    const tip = $('tip');
+    function showTip(evt, value, label, extra) {
+      tip.replaceChildren(el('div', { class: 'tv' }, value), el('div', { class: 'tl' }, label), extra ? el('div', { class: 'tl' }, extra) : null);
+      tip.style.display = 'block';
+      moveTip(evt);
+    }
+    function moveTip(evt) {
+      const r = evt.currentTarget?.getBoundingClientRect?.();
+      const x = evt.clientX ?? (r ? r.left + r.width / 2 : 0);
+      const y = evt.clientY ?? (r ? r.top : 0);
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      tip.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x + 14)) + 'px';
+      tip.style.top = Math.max(8, y - h - 12) + 'px';
+    }
+    const hideTip = () => { tip.style.display = 'none'; };
+    function hoverable(node, value, label, extra) {
+      node.tabIndex = 0;
+      node.addEventListener('pointerenter', e => showTip(e, value, label, extra));
+      node.addEventListener('pointermove', moveTip);
+      node.addEventListener('pointerleave', hideTip);
+      node.addEventListener('focus', e => showTip(e, value, label, extra));
+      node.addEventListener('blur', hideTip);
+      return node;
+    }
+
+    // ---------- range ----------
+    function getRange() {
+      const now = new Date();
+      const endToday = addDays(startOfDay(now), 1);
+      const earliest = DATA.requests.length ? startOfDay(DATA.requests[0].t) : startOfDay(now);
+      let start, end = endToday;
+      switch (S.range) {
+        case '7d': start = addDays(endToday, -7); break;
+        case '90d': start = addDays(endToday, -90); break;
+        case 'sem': {
+          const y = now.getFullYear();
+          start = now.getMonth() >= 7 ? new Date(y, 7, 1) : new Date(y, 0, 1);
+          break;
+        }
+        case 'all': start = earliest; break;
+        case 'custom': {
+          start = S.from ? parseIso(S.from) : earliest;
+          end = S.to ? addDays(parseIso(S.to), 1) : endToday;
+          if (end <= start) end = addDays(start, 1);
+          break;
+        }
+        default: start = addDays(endToday, -30);
+      }
+      return { start, end, len: end - start };
+    }
+    function rangeLabel(R) {
+      const names = { '7d': 'last 7 days', '30d': 'last 30 days', '90d': 'last 90 days', sem: 'this semester', all: 'all time' };
+      return names[S.range] || `${longDate(R.start)} – ${longDate(addDays(R.end, -1))}`;
+    }
+
+    // ---------- filtering ----------
+    function memberOk(r) {
+      const m = memberById.get(r.member_id);
+      if (!S.removed && m && !m.active) return false;
+      if (S.members.length && !S.members.includes(r.member_id)) return false;
+      return true;
+    }
+    const catOk = r => !S.cats.length || S.cats.includes(r.category);
+    function slice(start, end, { ignoreMembers = false, ignoreCats = false } = {}) {
+      return DATA.requests.filter(r => r.t >= start && r.t < end &&
+        (ignoreMembers ? (S.removed || memberById.get(r.member_id)?.active !== false) : memberOk(r)) &&
+        (ignoreCats || catOk(r)));
+    }
+    const visibleMembers = () => DATA.members.filter(m => S.removed || m.active);
+
+    // ---------- KPIs ----------
+    function kpiStats(rows) {
+      const approved = rows.filter(r => r.status === 'approved');
+      const resolved = rows.filter(r => r.status === 'approved' || r.status === 'denied');
+      const points = approved.reduce((s, r) => s + pts(r), 0);
+      const earners = new Set(approved.map(r => r.member_id)).size;
+      // Wait time only for brother-submitted requests (admin-entered ones resolve instantly)
+      const waits = resolved.filter(r => r.rt && r.rt - r.t > 5000).map(r => r.rt - r.t).sort((a, b) => a - b);
+      const median = waits.length ? waits[Math.floor(waits.length / 2)] : null;
+      return {
+        points, approved: approved.length, earners,
+        avg: earners ? points / earners : 0,
+        rate: resolved.length ? approved.length / resolved.length : null,
+        wait: median
+      };
+    }
+    function fmtWait(ms) {
+      if (ms == null) return '–';
+      const h = ms / 3600000;
+      if (h < 1) return Math.max(1, Math.round(ms / 60000)) + 'm';
+      if (h < 48) return fmt1(h) + 'h';
+      return fmt1(h / 24) + 'd';
+    }
+    function renderKpis(R, cur, prev) {
+      const hasPrev = S.range !== 'all';
+      const tiles = [
+        ['Points awarded', fmt(cur.points), cur.points, prev.points, true],
+        ['Approved requests', fmt(cur.approved), cur.approved, prev.approved, true],
+        ['Brothers earning', fmt(cur.earners), cur.earners, prev.earners, true],
+        ['Avg per earning brother', fmt(cur.avg), cur.avg, prev.avg, true],
+        ['Approval rate', cur.rate == null ? '–' : pct(cur.rate), cur.rate, prev.rate, true],
+        ['Median wait for approval', fmtWait(cur.wait), cur.wait, prev.wait, false]
+      ];
+      $('kpis').replaceChildren(...tiles.map(([label, val, c, p, higherIsBetter]) => {
+        let delta = null;
+        if (hasPrev && c != null && p != null && p !== 0) {
+          const ch = (c - p) / Math.abs(p);
+          const good = higherIsBetter ? ch >= 0 : ch <= 0;
+          delta = el('div', { class: 'kpi-delta' },
+            el('span', { class: Math.abs(ch) < 0.005 ? '' : good ? 'up' : 'down' }, (ch >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(ch))),
+            ' vs previous period');
+        } else if (hasPrev) {
+          delta = el('div', { class: 'kpi-delta' }, 'No previous data');
+        }
+        return el('div', { class: 'kpi' }, el('div', { class: 'kpi-label' }, label), el('div', { class: 'kpi-value' }, val), delta);
+      }));
+    }
+
+    // ---------- spotlight (exactly one brother selected) ----------
+    function renderSpotlight(R, rows) {
+      const card = $('spotlight-card');
+      if (S.members.length !== 1) { card.classList.add('hidden'); return; }
+      card.classList.remove('hidden');
+      const id = S.members[0];
+      $('spotlight-title').textContent = memberName(id);
+
+      const totals = new Map(visibleMembers().map(m => [m.id, 0]));
+      const rangeTotals = new Map(totals);
+      for (const r of DATA.requests) {
+        if (r.status !== 'approved' || !totals.has(r.member_id) || !catOk(r)) continue;
+        if (r.t < R.end) totals.set(r.member_id, totals.get(r.member_id) + pts(r));
+        if (r.t >= R.start && r.t < R.end) rangeTotals.set(r.member_id, rangeTotals.get(r.member_id) + pts(r));
+      }
+      const rankOf = (map) => 1 + [...map.values()].filter(v => v > (map.get(id) || 0)).length;
+      const houseRange = [...rangeTotals.values()].reduce((a, b) => a + b, 0);
+      const mine = rows.filter(r => r.status === 'approved');
+      const byCat = new Map();
+      for (const r of mine) byCat.set(r.category, (byCat.get(r.category) || 0) + pts(r));
+      const topCat = [...byCat.entries()].sort((a, b) => b[1] - a[1])[0];
+
+      // Streak: consecutive weeks (ending this week) with at least one approved request
+      const mineAll = DATA.requests.filter(r => r.member_id === id && r.status === 'approved' && catOk(r) && r.t < R.end);
+      const weeks = new Set(mineAll.map(r => +startOfWeek(r.t)));
+      let streak = 0;
+      for (let w = startOfWeek(addDays(R.end, -1)); weeks.has(+w); w = addDays(w, -7)) streak++;
+      const last = mineAll.length ? mineAll[mineAll.length - 1].t : null;
+
+      const items = [
+        ['Points in range', fmt(rangeTotals.get(id) || 0), `#${rankOf(rangeTotals)} of ${rangeTotals.size} in range`],
+        ['Total points', fmt(totals.get(id) || 0), `#${rankOf(totals)} all-time`],
+        ['Share of house', houseRange ? pct((rangeTotals.get(id) || 0) / houseRange) : '–', 'of points in range'],
+        ['Top category', topCat ? topCat[0] : '–', topCat ? `${fmt(topCat[1])} pts` : ''],
+        ['Weekly streak', streak + (streak === 1 ? ' week' : ' weeks'), 'in a row with points'],
+        ['Last points', last ? longDate(last) : 'Never', last ? Math.floor((Date.now() - last) / DAY) + ' days ago' : ''],
+        ['Requests in range', fmt(rows.length), `${mine.length} approved`],
+        ['Avg per request', mine.length ? fmt1(mine.reduce((s, r) => s + pts(r), 0) / mine.length) : '–', 'points']
+      ];
+      $('spotlight').replaceChildren(...items.map(([l, v, sub]) =>
+        el('div', { class: 'spot-item' }, el('div', { class: 'l' }, l), el('div', { class: 'v' }, v),
+          sub ? el('div', { class: 'l', style: 'color:var(--ink-3);margin-top:2px;' }, sub) : null)));
+    }
+
+    // ---------- trend chart ----------
+    function pickGran(R) {
+      if (S.gran !== 'auto') return S.gran;
+      const days = R.len / DAY;
+      return days <= 45 ? 'day' : days <= 200 ? 'week' : 'month';
+    }
+    function assignColors(ids) {
+      for (const id of [...colorSlots.keys()]) if (!ids.includes(id)) colorSlots.delete(id);
+      for (const id of ids) {
+        if (colorSlots.has(id)) continue;
+        const used = new Set(colorSlots.values());
+        const free = SERIES.findIndex((_, i) => !used.has(i));
+        colorSlots.set(id, free === -1 ? 0 : free);
+      }
+    }
+    function trendSeriesIds(rows) {
+      if (S.series === 'house') return null;
+      if (S.series === 'selected') return S.members.slice(0, 8);
+      const totals = new Map();
+      for (const r of rows) if (r.status === 'approved') totals.set(r.member_id, (totals.get(r.member_id) || 0) + pts(r));
+      const n = S.series === 'top8' ? 8 : 5;
+      return [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([id]) => id);
+    }
+    const crosshair = {
+      id: 'crosshair',
+      afterDatasetsDraw(chart) {
+        const a = chart.tooltip?.getActiveElements?.();
+        if (!a || !a.length) return;
+        const x = a[0].element.x, { top, bottom } = chart.chartArea, ctx = chart.ctx;
+        ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke(); ctx.restore();
+      }
+    };
+    const endLabels = {
+      id: 'endLabels',
+      afterDatasetsDraw(chart) {
+        const sets = chart.data.datasets;
+        if (sets.length < 2 || sets.length > 4) return;
+        const ctx = chart.ctx; ctx.save(); ctx.font = '12px system-ui, sans-serif'; ctx.fillStyle = '#f0efec';
+        const placed = [];
+        sets.map((ds, i) => {
+          const pts = chart.getDatasetMeta(i).data;
+          const p = pts[pts.length - 1];
+          return p ? { y: p.y, x: p.x, label: ds.label } : null;
+        }).filter(Boolean).sort((a, b) => a.y - b.y).forEach(l => {
+          let y = l.y;
+          for (const py of placed) if (Math.abs(y - py) < 14) y = py + 14;
+          placed.push(y);
+          ctx.textAlign = 'right';
+          ctx.fillText(l.label.split(' ')[0], chart.chartArea.right - 4, y - 6);
+        });
+        ctx.restore();
+      }
+    };
+    function renderTrend(R, rows) {
+      const gran = pickGran(R);
+      const ids = trendSeriesIds(rows);
+      $('trend-selected-btn').disabled = !S.members.length;
+      const buckets = [];
+      for (let b = bucketStart(R.start, gran); b < R.end; b = nextBucket(b, gran)) buckets.push(b);
+      const idx = new Map(buckets.map((b, i) => [+b, i]));
+
+      const series = ids === null ? [{ id: 'house', label: 'House total' }] : ids.map(id => ({ id, label: memberName(id) }));
+      if (ids) assignColors(ids);
+      const values = new Map(series.map(s => [s.id, new Array(buckets.length).fill(0)]));
+      for (const r of rows) {
+        if (r.status !== 'approved') continue;
+        const key = ids === null ? 'house' : r.member_id;
+        const arr = values.get(key);
+        if (!arr) continue;
+        const i = idx.get(+bucketStart(r.t, gran));
+        if (i != null) arr[i] += pts(r);
+      }
+      if (S.mode === 'cum') for (const arr of values.values()) for (let i = 1; i < arr.length; i++) arr[i] += arr[i - 1];
+
+      const labels = buckets.map(b => bucketLabel(b, gran));
+      const datasets = series.map(s => {
+        const color = s.id === 'house' ? SERIES[0] : SERIES[colorSlots.get(s.id)];
+        return {
+          label: s.label, data: values.get(s.id), borderColor: color, backgroundColor: color,
+          borderWidth: 2, pointRadius: buckets.length <= 16 ? 3 : 0, pointHoverRadius: 5,
+          pointBorderColor: '#1b2034', pointBorderWidth: 2,
+          cubicInterpolationMode: 'monotone', fill: false
+        };
+      });
+
+      const what = S.mode === 'cum' ? 'Running total of points' : `Points per ${gran}`;
+      const who = ids === null ? 'whole house'
+        : ids.length === 1 ? memberName(ids[0])
+        : S.series === 'selected' ? 'selected brothers' : `top ${ids.length} brothers in range`;
+      $('trend-sub').textContent = `${what}, ${who}, ${rangeLabel(R)}.` + (ids && !ids.length ? ' Nobody earned points in this range.' : '');
+
+      if (!trendChart) {
+        trendChart = new Chart($('trend-chart'), {
+          type: 'line',
+          data: { labels, datasets },
+          plugins: [crosshair, endLabels],
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+            interaction: { mode: 'index', intersect: false },
+            layout: { padding: { right: 8 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#10142a', borderColor: 'rgba(255,255,255,0.16)', borderWidth: 1,
+                titleColor: 'rgba(255,255,255,0.72)', bodyColor: '#f0efec', padding: 10,
+                itemSort: (a, b) => b.parsed.y - a.parsed.y,
+                usePointStyle: true,
+                callbacks: {
+                  label: c => ` ${fmt(c.parsed.y)}  ${c.dataset.label}`,
+                  labelPointStyle: () => ({ pointStyle: 'line', rotation: 0 })
+                }
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, border: { color: 'rgba(255,255,255,0.16)' },
+                   ticks: { color: 'rgba(255,255,255,0.5)', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+              y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.07)' }, border: { display: false },
+                   ticks: { color: 'rgba(255,255,255,0.5)', precision: 0, callback: v => fmt(v) } }
+            }
+          }
+        });
+      } else {
+        trendChart.data.labels = labels;
+        trendChart.data.datasets = datasets;
+        trendChart.update();
+      }
+
+      // Legend (always for 2+ series; mirrors the mark with a line key)
+      const legend = $('trend-legend');
+      legend.replaceChildren(...(datasets.length < 2 ? [] : datasets.map((d, i) =>
+        el('span', { class: 'legend-item', title: 'Spotlight this brother', onclick: () => setMembers([series[i].id]) },
+          el('span', { class: 'legend-key', style: `background:${d.borderColor}` }), d.label))));
+
+      // Table twin
+      const t = $('trend-table');
+      t.classList.toggle('show', view.trendTable);
+      $('trend-table-btn').textContent = view.trendTable ? 'Hide table' : 'Table';
+      if (view.trendTable) {
+        const head = el('tr', {}, el('th', {}, 'Period'), ...datasets.map(d => el('th', { class: 'num' }, d.label)));
+        const body = labels.map((l, i) => el('tr', {}, el('td', { class: 'date' }, l), ...datasets.map(d => el('td', { class: 'num' }, fmt(d.data[i])))));
+        t.replaceChildren(el('table', {}, el('thead', {}, head), el('tbody', {}, body)));
+      }
+    }
+
+    // ---------- breakdown ----------
+    function groupKey(r, g) {
+      switch (g) {
+        case 'member': return r.member_id;
+        case 'category': return r.category;
+        case 'weekday': return r.t.getDay();
+        case 'hour': return r.t.getHours();
+        case 'month': return +startOfMonth(r.t);
+      }
+    }
+    function groupLabel(k, g) {
+      switch (g) {
+        case 'member': return memberName(k);
+        case 'category': return k;
+        case 'weekday': return WEEKDAYS[k];
+        case 'hour': { const h = k % 12 || 12; return `${h} ${k < 12 ? 'AM' : 'PM'}`; }
+        case 'month': return new Date(k).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      }
+    }
+    function renderBreakdown(R, rows) {
+      const g = S.group, m = S.metric;
+      const agg = new Map();
+      const get = k => { if (!agg.has(k)) agg.set(k, { pts: 0, appr: 0, resolved: 0 }); return agg.get(k); };
+      if (g === 'member') for (const mm of visibleMembers()) if (!S.members.length || S.members.includes(mm.id)) get(mm.id);
+      if (g === 'weekday') for (let i = 0; i < 7; i++) get(i);
+      for (const r of rows) {
+        const a = get(groupKey(r, g));
+        if (r.status === 'approved') { a.pts += pts(r); a.appr++; }
+        if (r.status === 'approved' || r.status === 'denied') a.resolved++;
+      }
+      const house = [...agg.values()].reduce((s, a) => s + a.pts, 0);
+      const valueOf = a => m === 'points' ? a.pts : m === 'requests' ? a.appr : m === 'avg' ? (a.appr ? a.pts / a.appr : 0)
+        : m === 'rate' ? (a.resolved ? a.appr / a.resolved : 0) : (house ? a.pts / house : 0);
+      const show = v => m === 'rate' || m === 'share' ? pct(v) : m === 'avg' ? fmt1(v) : fmt(v);
+
+      let entries = [...agg.entries()].map(([k, a]) => ({ k, a, v: valueOf(a) }));
+      if (m === 'rate') entries = entries.filter(e => e.a.resolved > 0);
+      const natural = g === 'weekday' || g === 'hour' || g === 'month';
+      entries.sort(natural ? (x, y) => x.k - y.k : (x, y) => y.v - x.v);
+      const max = Math.max(...entries.map(e => e.v), 0) || 1;
+      const limit = view.bdAll || natural ? entries.length : 15;
+      const clickable = g === 'member' || g === 'category';
+
+      const metricName = $('bd-metric').selectedOptions[0].textContent.toLowerCase();
+      $('bd-sub').textContent = `${$('bd-metric').selectedOptions[0].textContent} ${$('bd-group').selectedOptions[0].textContent.toLowerCase()}, ${rangeLabel(R)}.` +
+        (clickable ? ' Click a row to filter to it.' : '');
+
+      $('bd-bars').replaceChildren(...(entries.length ? entries.slice(0, limit).map(e => {
+        const label = groupLabel(e.k, g);
+        const extra = `${fmt(e.a.pts)} pts · ${fmt(e.a.appr)} approved` + (e.a.resolved ? ` · ${pct(e.a.appr / e.a.resolved)} approval rate` : '');
+        const row = el('div', {
+          class: 'bar-row' + (clickable ? ' clickable' : ''),
+          onclick: clickable ? () => (g === 'member' ? toggleIn('members', e.k) : toggleIn('cats', e.k)) : null,
+          onkeydown: clickable ? ev => { if (ev.key === 'Enter') ev.currentTarget.click(); } : null
+        },
+          el('div', { class: 'bar-label' }, label),
+          el('div', { class: 'bar-track' }, el('div', { class: 'bar-fill', style: `width:${Math.max(0, e.v / max * 100)}%` })),
+          el('div', { class: 'bar-val' }, show(e.v), m === 'points' && house ? el('span', { class: 'muted' }, pct(e.a.pts / house)) : null));
+        return hoverable(row, show(e.v), label, extra);
+      }) : [el('div', { class: 'list-empty' }, 'No data in this slice.')]));
+
+      const more = $('bd-more');
+      more.classList.toggle('hidden', natural || entries.length <= 15);
+      more.textContent = view.bdAll ? 'Show top 15' : `Show all ${entries.length}`;
+    }
+
+    // ---------- needs attention ----------
+    function renderAttention(R, rows) {
+      const box = $('attention');
+      const members = visibleMembers().filter(m => !S.members.length || S.members.includes(m.id));
+      const inRange = new Map(members.map(m => [m.id, 0]));
+      for (const r of rows) if (r.status === 'approved' && inRange.has(r.member_id)) inRange.set(r.member_id, inRange.get(r.member_id) + pts(r));
+
+      // Rank movement: all-time standing at range start vs range end (category filter applies)
+      const before = new Map(members.map(m => [m.id, 0])), after = new Map(before);
+      const lastSeen = new Map();
+      for (const r of DATA.requests) {
+        if (r.status !== 'approved' || !before.has(r.member_id) || !catOk(r) || r.t >= R.end) continue;
+        if (r.t < R.start) before.set(r.member_id, before.get(r.member_id) + pts(r));
+        after.set(r.member_id, after.get(r.member_id) + pts(r));
+        lastSeen.set(r.member_id, r.t);
+      }
+      const rank = map => { const sorted = [...map.entries()].sort((a, b) => b[1] - a[1]); return new Map(sorted.map(([id], i) => [id, i + 1])); };
+      const rb = rank(before), ra = rank(after);
+      const climbers = members.map(m => ({ id: m.id, d: rb.get(m.id) - ra.get(m.id), gain: inRange.get(m.id) }))
+        .filter(x => x.d > 0).sort((a, b) => b.d - a.d || b.gain - a.gain).slice(0, 5);
+
+      const zero = members.filter(m => !inRange.get(m.id))
+        .sort((a, b) => (lastSeen.get(b.id) || 0) - (lastSeen.get(a.id) || 0));
+      // Earned in range, but nothing in its final 3 weeks (only meaningful for longer ranges)
+      const quietCut = addDays(R.end, -21);
+      const lastInRange = new Map();
+      for (const r of rows) if (r.status === 'approved') lastInRange.set(r.member_id, r.t);
+      const slowing = R.len > 28 * DAY ? members.filter(m => inRange.get(m.id) && lastInRange.get(m.id) < quietCut)
+        .sort((a, b) => lastInRange.get(a.id) - lastInRange.get(b.id)) : [];
+
+      const pending = DATA.requests.filter(r => r.status === 'pending' && memberOk(r) && catOk(r));
+      const oldest = pending.length ? pending[0].t : null;
+
+      const row = (id, left, right) => el('div', { class: 'list-row clickable', onclick: () => setMembers([id]) }, el('span', {}, left), el('span', { class: 'r' }, right));
+      const capped = (list, n, fn) => [...list.slice(0, n).map(fn),
+        ...(list.length > n ? [el('div', { class: 'list-empty' }, `+ ${list.length - n} more`)] : [])];
+      const group = (title, items, empty) => [el('div', { class: 'list-group-title' }, title),
+        el('div', { class: 'list', style: 'margin-bottom:14px;' }, items.length ? items : [el('div', { class: 'list-empty' }, empty)])];
+
+      box.replaceChildren(
+        ...group('Pending queue', [el('div', { class: 'list-row' },
+          el('span', {}, pending.length ? `${pending.length} waiting for approval` : 'Nothing waiting'),
+          el('span', { class: 'r' }, oldest ? `oldest ${Math.max(0, Math.floor((Date.now() - oldest) / DAY))}d` : ''))], ''),
+        ...group('Climbing the board', climbers.map(c => row(c.id, memberName(c.id), el('span', {}, el('span', { class: 'up-txt' }, `▲ ${c.d}`), `  ·  +${fmt(c.gain)} pts`))), 'No rank changes in this range.'),
+        ...group(`No points in range (${zero.length})`, capped(zero, 8, m => row(m.id, m.name, lastSeen.has(m.id) ? 'last ' + shortDate(lastSeen.get(m.id)) : 'never')), 'Everyone earned points in this range.'),
+        ...(R.len > 28 * DAY ? group(`Slowing down: none in the last 3 weeks (${slowing.length})`, capped(slowing, 6, m => row(m.id, m.name, 'last ' + shortDate(lastInRange.get(m.id)))), 'Nobody has gone 3+ weeks without points.') : [])
+      );
+    }
+
+    // ---------- heatmap ----------
+    function renderHeat(R, rows) {
+      const metric = S.heat;
+      const approved = rows.filter(r => r.status === 'approved');
+      const val = r => metric === 'points' ? pts(r) : 1;
+      const catTot = new Map(), memTot = new Map(), cell = new Map();
+      for (const r of approved) {
+        catTot.set(r.category, (catTot.get(r.category) || 0) + val(r));
+        memTot.set(r.member_id, (memTot.get(r.member_id) || 0) + val(r));
+      }
+      const MAXC = 9;
+      let cats = [...catTot.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+      const folded = cats.length > MAXC ? new Set(cats.slice(MAXC - 1)) : new Set();
+      if (folded.size) cats = [...cats.slice(0, MAXC - 1), 'Other'];
+      for (const r of approved) {
+        const c = folded.has(r.category) ? 'Other' : r.category;
+        const k = r.member_id + '|' + c;
+        cell.set(k, (cell.get(k) || 0) + val(r));
+      }
+      let mems = [...memTot.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+      const total = mems.length;
+      if (!view.heatAll) mems = mems.slice(0, 15);
+      const max = Math.max(0, ...cell.values()) || 1;
+      const bin = v => Math.min(HEAT_RAMP.length - 1, Math.floor((v / max) * HEAT_RAMP.length));
+
+      const heat = $('heat');
+      heat.style.gridTemplateColumns = `minmax(110px, 170px) repeat(${cats.length}, minmax(52px, 1fr))`;
+      const kids = [el('div')];
+      for (const c of cats) kids.push(el('div', { class: 'heat-colhead', title: c }, c));
+      for (const id of mems) {
+        kids.push(el('div', { class: 'heat-rowhead', title: 'Spotlight ' + memberName(id), onclick: () => setMembers([id]) }, memberName(id)));
+        for (const c of cats) {
+          const v = cell.get(id + '|' + c) || 0;
+          if (!v) { kids.push(el('div', { class: 'heat-cell zero' }, '0')); continue; }
+          const b = bin(v);
+          const node = el('div', {
+            class: 'heat-cell',
+            style: `background:${HEAT_RAMP[b]};color:${b >= 3 ? '#0b1530' : '#f0efec'}`,
+            onclick: () => { if (c === 'Other') { setMembers([id]); } else { S.members = [id]; S.cats = [c]; apply(); } }
+          }, fmt(v));
+          kids.push(hoverable(node, `${fmt(v)} ${metric === 'points' ? 'pts' : 'requests'}`, `${memberName(id)} · ${c}`,
+            `${pct(v / (memTot.get(id) || 1))} of their ${metric === 'points' ? 'points' : 'requests'}`));
+        }
+      }
+      if (!mems.length) kids.push(el('div', { class: 'list-empty', style: `grid-column: 1 / -1` }, 'No approved requests in this slice.'));
+      heat.replaceChildren(...kids);
+
+      const step = max / HEAT_RAMP.length;
+      $('heat-legend').replaceChildren(el('span', {}, 'Less'),
+        ...HEAT_RAMP.map((c, i) => hoverable(el('span', { class: 'sw', style: `background:${c}` }), `${fmt(i * step)}–${fmt((i + 1) * step)}`, 'per cell')),
+        el('span', {}, 'More'), el('span', { style: 'margin-left:8px;' }, `Max cell: ${fmt(max)}`));
+      const hm = $('heat-more');
+      hm.classList.toggle('hidden', total <= 15);
+      hm.textContent = view.heatAll ? 'Top 15 only' : `Show all ${total}`;
+    }
+
+    // ---------- table ----------
+    function tableRows(rows) {
+      const q = view.tblSearch.trim().toLowerCase();
+      let out = rows.filter(r => view.tblStatus === 'all' || r.status === view.tblStatus);
+      if (q) out = out.filter(r => [memberName(r.member_id), r.category, r.explanation, r.admin_note].some(s => s && s.toLowerCase().includes(q)));
+      const key = { t: r => +r.t, member: r => memberName(r.member_id), category: r => r.category,
+        requested: r => r.requested_points || 0, awarded: r => pts(r), status: r => r.status }[view.tblSort];
+      return out.sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * view.tblDir; });
+    }
+    function renderTable(rows) {
+      const all = tableRows(rows);
+      const PAGE = 25;
+      const pages = Math.max(1, Math.ceil(all.length / PAGE));
+      view.tblPage = Math.min(view.tblPage, pages - 1);
+      const page = all.slice(view.tblPage * PAGE, view.tblPage * PAGE + PAGE);
+      $('tbl-body').replaceChildren(...(page.length ? page.map(r => el('tr', {},
+        el('td', { class: 'date' }, r.t.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })),
+        el('td', {}, el('a', { href: '#', style: 'color:inherit;', onclick: e => { e.preventDefault(); setMembers([r.member_id]); } }, memberName(r.member_id))),
+        el('td', {}, r.category),
+        el('td', { class: 'num' }, fmt(r.requested_points || 0)),
+        el('td', { class: 'num' }, r.status === 'approved' ? fmt(pts(r)) : '–'),
+        el('td', {}, el('span', { class: 'status status-' + r.status }, r.status)),
+        el('td', { class: 'notes' }, r.explanation || '')
+      )) : [el('tr', {}, el('td', { colspan: 7, class: 'list-empty' }, 'No requests match.'))]));
+      $('tbl-count').textContent = all.length ? `${view.tblPage * PAGE + 1}–${view.tblPage * PAGE + page.length} of ${fmt(all.length)}` : '0 requests';
+      $('tbl-prev').disabled = view.tblPage === 0;
+      $('tbl-next').disabled = view.tblPage >= pages - 1;
+      document.querySelectorAll('th[data-sort]').forEach(th => {
+        th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (th.dataset.sort === view.tblSort ? (view.tblDir > 0 ? ' ▲' : ' ▼') : '');
+      });
+      return all;
+    }
+    function exportCsv() {
+      const R = getRange();
+      const rows = tableRows(slice(R.start, R.end));
+      const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [['Date', 'Brother', 'Category', 'Requested', 'Awarded', 'Status', 'Notes', 'Admin note'].join(',')];
+      for (const r of rows) lines.push([isoDate(r.t), memberName(r.member_id), r.category, r.requested_points, r.status === 'approved' ? pts(r) : '',
+        r.status, r.explanation, r.admin_note].map(esc).join(','));
+      const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      const a = el('a', { href: url, download: `aepi-requests-${isoDate(R.start)}-to-${isoDate(addDays(R.end, -1))}.csv` });
+      document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // ---------- filter UI ----------
+    function setSeg(id, value, attr = 'v') {
+      document.querySelectorAll(`#${id} button`).forEach(b => b.classList.toggle('on', b.dataset[attr] === value));
+    }
+    function setMembers(ids) { S.members = ids; apply(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    function toggleIn(key, v) {
+      const arr = S[key];
+      S[key] = arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
+      apply();
+    }
+    function buildPopList(kind) {
+      const isM = kind === 'members';
+      const q = $(isM ? 'members-search' : 'cats-search').value.trim().toLowerCase();
+      const R = getRange();
+      const rows = slice(R.start, R.end, isM ? { ignoreMembers: true } : { ignoreCats: true });
+      const totals = new Map();
+      for (const r of rows) if (r.status === 'approved') { const k = isM ? r.member_id : r.category; totals.set(k, (totals.get(k) || 0) + pts(r)); }
+      let items = isM ? visibleMembers().map(m => ({ k: m.id, label: m.name + (m.active ? '' : ' (removed)') }))
+        : [...new Set(DATA.requests.map(r => r.category))].sort().map(c => ({ k: c, label: c }));
+      if (q) items = items.filter(i => i.label.toLowerCase().includes(q));
+      const sel = S[isM ? 'members' : 'cats'];
+      $(isM ? 'members-list' : 'cats-list').replaceChildren(...(items.length ? items.map(i =>
+        el('label', { class: 'pop-item' },
+          el('input', { type: 'checkbox', checked: sel.includes(i.k), onchange: () => toggleIn(isM ? 'members' : 'cats', i.k) }),
+          el('span', {}, i.label), el('span', { class: 'sub' }, fmt(totals.get(i.k) || 0)))) : [el('div', { class: 'list-empty' }, 'No matches')]));
+    }
+    function renderFilterUi(R) {
+      setSeg('range-seg', S.range, 'range');
+      $('custom-dates').classList.toggle('show', S.range === 'custom');
+      $('date-from').value = S.from || isoDate(R.start);
+      $('date-to').value = S.to || isoDate(addDays(R.end, -1));
+      $('removed-toggle').checked = S.removed;
+      setSeg('trend-series', S.series); setSeg('trend-mode', S.mode); setSeg('tbl-status', view.tblStatus);
+      $('trend-gran').value = S.gran; $('bd-group').value = S.group; $('bd-metric').value = S.metric; $('heat-metric').value = S.heat;
+
+      $('members-btn-label').textContent = !S.members.length ? 'All brothers' : S.members.length === 1 ? memberName(S.members[0]) : `${S.members.length} brothers`;
+      $('cats-btn-label').textContent = !S.cats.length ? 'All categories' : S.cats.length === 1 ? S.cats[0] : `${S.cats.length} categories`;
+      $('members-btn').classList.toggle('active', S.members.length > 0);
+      $('cats-btn').classList.toggle('active', S.cats.length > 0);
+      if ($('members-pop').classList.contains('open')) buildPopList('members');
+      if ($('cats-pop').classList.contains('open')) buildPopList('cats');
+
+      const chips = [
+        ...S.members.map(id => ['Brother', memberName(id), () => toggleIn('members', id)]),
+        ...S.cats.map(c => ['Category', c, () => toggleIn('cats', c)])
+      ];
+      $('chips').replaceChildren(...chips.map(([k, v, rm]) =>
+        el('span', { class: 'chip' }, `${k}: ${v}`, el('button', { 'aria-label': `Remove ${v}`, onclick: rm }, '×'))));
+    }
+
+    // ---------- URL state ----------
+    function writeHash() {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(S)) {
+        const dv = defaults[k];
+        if ((k === 'from' || k === 'to') && S.range !== 'custom') continue;
+        if (Array.isArray(v) ? v.length === 0 : v === dv) continue;
+        p.set(k, Array.isArray(v) ? v.join('~') : String(v));
+      }
+      const h = p.toString();
+      history.replaceState(null, '', h ? '#' + h : location.pathname);
+    }
+    function readHash() {
+      const p = new URLSearchParams(location.hash.slice(1));
+      const next = { ...defaults };
+      for (const k of Object.keys(defaults)) {
+        if (!p.has(k)) continue;
+        const raw = p.get(k);
+        if (k === 'members') next.members = raw.split('~').map(Number).filter(id => memberById.has(id));
+        else if (k === 'cats') next.cats = raw.split('~').filter(Boolean);
+        else if (k === 'removed') next.removed = raw === 'true';
+        else next[k] = raw;
+      }
+      S = next;
+    }
+
+    // ---------- main render ----------
+    function apply() {
+      if (S.series === 'selected' && !S.members.length) S.series = 'top5';
+      view.tblPage = 0;
+      render();
+    }
+    function render() {
+      const R = getRange();
+      const rows = slice(R.start, R.end);
+      const prev = slice(new Date(R.start - R.len), R.start);
+      renderFilterUi(R);
+      renderKpis(R, kpiStats(rows), kpiStats(prev));
+      renderSpotlight(R, rows);
+      renderTrend(R, rows);
+      renderBreakdown(R, rows);
+      renderAttention(R, rows);
+      renderHeat(R, rows);
+      renderTable(rows);
+      writeHash();
+    }
+
+    function wire() {
+      $('range-seg').addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.range === 'custom' && S.range !== 'custom') {
+          const R = getRange(); S.from = isoDate(R.start); S.to = isoDate(addDays(R.end, -1));
+        }
+        S.range = b.dataset.range; apply();
+      });
+      $('date-from').addEventListener('change', e => { S.from = e.target.value; apply(); });
+      $('date-to').addEventListener('change', e => { S.to = e.target.value; apply(); });
+      $('removed-toggle').addEventListener('change', e => {
+        S.removed = e.target.checked;
+        if (!S.removed) S.members = S.members.filter(id => memberById.get(id)?.active);
+        apply();
+      });
+      $('reset-btn').addEventListener('click', () => { S = { ...defaults }; view.bdAll = view.heatAll = false; view.tblSearch = ''; $('tbl-search').value = ''; view.tblStatus = 'all'; apply(); });
+
+      for (const kind of ['members', 'cats']) {
+        const btn = $(kind + '-btn'), pop = $(kind + '-pop');
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const open = !pop.classList.contains('open');
+          document.querySelectorAll('.popover').forEach(p => p.classList.remove('open'));
+          if (open) { pop.classList.add('open'); buildPopList(kind); $(kind + '-search').focus(); }
+        });
+        pop.addEventListener('click', e => e.stopPropagation());
+        $(kind + '-search').addEventListener('input', () => buildPopList(kind));
+        pop.querySelector('[data-clear]').addEventListener('click', () => { S[kind] = []; apply(); });
+        pop.querySelector('[data-close]').addEventListener('click', () => pop.classList.remove('open'));
+      }
+      document.addEventListener('click', () => document.querySelectorAll('.popover').forEach(p => p.classList.remove('open')));
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.popover').forEach(p => p.classList.remove('open')); });
+
+      $('trend-series').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { S.series = b.dataset.v; render(); } });
+      $('trend-mode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.mode = b.dataset.v; render(); } });
+      $('trend-gran').addEventListener('change', e => { S.gran = e.target.value; render(); });
+      $('trend-table-btn').addEventListener('click', () => { view.trendTable = !view.trendTable; render(); });
+      $('bd-group').addEventListener('change', e => { S.group = e.target.value; view.bdAll = false; render(); });
+      $('bd-metric').addEventListener('change', e => { S.metric = e.target.value; render(); });
+      $('bd-more').addEventListener('click', () => { view.bdAll = !view.bdAll; render(); });
+      $('heat-metric').addEventListener('change', e => { S.heat = e.target.value; render(); });
+      $('heat-more').addEventListener('click', () => { view.heatAll = !view.heatAll; render(); });
+
+      let searchTimer;
+      $('tbl-search').addEventListener('input', e => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { view.tblSearch = e.target.value; view.tblPage = 0; renderTable(currentRows()); }, 150); });
+      $('tbl-status').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { view.tblStatus = b.dataset.v; view.tblPage = 0; setSeg('tbl-status', view.tblStatus); renderTable(currentRows()); } });
+      $('tbl-prev').addEventListener('click', () => { view.tblPage--; renderTable(currentRows()); });
+      $('tbl-next').addEventListener('click', () => { view.tblPage++; renderTable(currentRows()); });
+      document.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+        const k = th.dataset.sort;
+        if (view.tblSort === k) view.tblDir *= -1; else { view.tblSort = k; view.tblDir = k === 't' || k === 'requested' || k === 'awarded' ? -1 : 1; }
+        renderTable(currentRows());
+      }));
+      $('export-btn').addEventListener('click', exportCsv);
+      window.addEventListener('hashchange', () => { readHash(); render(); });
+    }
+    function currentRows() { const R = getRange(); return slice(R.start, R.end); }
+
+    // ---------- boot ----------
+    async function boot() {
+      const state = $('state');
+      if (!token) {
+        state.replaceChildren('Admin login required. ', el('a', { href: '/admin.html?next=analytics' }, 'Log in on the Admin page'), '.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/admin/analytics/data', { headers: { 'x-admin-token': token } });
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminToken');
+          state.replaceChildren('Your admin session expired. ', el('a', { href: '/admin.html?next=analytics' }, 'Log in again'), '.');
+          return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        DATA = await res.json();
+      } catch (e) {
+        console.error(e);
+        state.textContent = 'Could not load analytics data. Refresh to try again.';
+        return;
+      }
+      DATA.requests.forEach(r => { r.t = new Date(r.created_at); r.rt = r.resolved_at ? new Date(r.resolved_at) : null; });
+      DATA.requests.sort((a, b) => a.t - b.t);
+      memberById = new Map(DATA.members.map(m => [m.id, m]));
+      $('updated').textContent = `${fmt(DATA.requests.length)} requests · loaded ${new Date(DATA.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      state.classList.add('hidden');
+      $('app').classList.remove('hidden');
+      Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+      readHash();
+      wire();
+      render();
+    }
+    boot();
+  })();
+  </script>
+</body>
+</html>
